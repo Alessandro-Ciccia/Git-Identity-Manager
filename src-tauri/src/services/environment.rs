@@ -214,6 +214,10 @@ mod tests {
                 .cloned()
                 .unwrap_or_else(|| panic!("missing fake response for {program}"))
         }
+
+        fn start(&self, _program: &str, _args: &[&str]) -> Result<(), ProcessError> {
+            panic!("environment detection must not start background processes")
+        }
     }
 
     fn successful(stdout: &str) -> Result<ProcessOutput, ProcessError> {

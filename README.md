@@ -2,7 +2,7 @@
 
 Git Identity Manager is a local-first desktop utility for managing multiple Git and GitHub identities on one computer.
 
-Milestone 1 adds read-only local dependency detection for `git` and `gh`. The overview reports availability and normalized versions through a narrow typed Tauri command.
+Milestone 2 adds structured GitHub CLI account discovery, active-account switching with read-back verification, refresh, and the official browser login flow. Credentials remain managed by GitHub CLI and are never returned to the frontend.
 
 ## Stack
 
@@ -21,7 +21,7 @@ Prerequisites:
 - pnpm
 - Rust and Cargo
 - Git
-- GitHub CLI (`gh`) for later milestones
+- A current GitHub CLI (`gh`) release with `gh auth status --json hosts` support
 
 Install dependencies:
 

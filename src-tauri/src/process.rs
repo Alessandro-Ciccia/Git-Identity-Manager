@@ -1,4 +1,7 @@
-use std::{io, process::Command};
+use std::{
+    io,
+    process::{Command, Stdio},
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ProcessOutput {
@@ -21,6 +24,7 @@ pub(crate) struct ProcessError {
 
 pub(crate) trait ProcessRunner: Send + Sync {
     fn run(&self, program: &str, args: &[&str]) -> Result<ProcessOutput, ProcessError>;
+    fn start(&self, program: &str, args: &[&str]) -> Result<(), ProcessError>;
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -37,6 +41,22 @@ impl ProcessRunner for SystemProcessRunner {
                 stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
             })
             .map_err(ProcessError::from)
+    }
+
+    fn start(&self, program: &str, args: &[&str]) -> Result<(), ProcessError> {
+        let mut child = Command::new(program)
+            .args(args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(ProcessError::from)?;
+
+        std::thread::spawn(move || {
+            let _ = child.wait();
+        });
+
+        Ok(())
     }
 }
 

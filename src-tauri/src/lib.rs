@@ -8,7 +8,13 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
-            commands::environment::get_environment_status
+            commands::environment::get_environment_status,
+            commands::github::open_github_login_page,
+            commands::github::open_github_account_page,
+            commands::github::open_github_cli_update_page,
+            commands::github::list_github_accounts,
+            commands::github::switch_github_account,
+            commands::github::launch_github_login,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
