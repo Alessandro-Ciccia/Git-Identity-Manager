@@ -1,15 +1,35 @@
 <script lang="ts">
-  import { navigationItems } from '$lib/domain/navigation';
+  import { onMount } from 'svelte';
 
-  const pillars = [
-    'Narrow Tauri commands; no arbitrary shell execution',
-    'Local-only persistence; no GitHub tokens or secrets stored',
-    'Git and GitHub CLI integrations isolated behind Rust services',
-  ];
+  import EnvironmentStatusPanel from '$lib/components/EnvironmentStatusPanel.svelte';
+  import type { EnvironmentStatus } from '$lib/domain/environment';
+  import { navigationItems } from '$lib/domain/navigation';
+  import { environmentErrorMessage, getEnvironmentStatus } from '$lib/ipc/environment';
+
+  let status = $state<EnvironmentStatus | null>(null);
+  let isLoading = $state(true);
+  let loadError = $state<string | null>(null);
+
+  async function refreshEnvironment(): Promise<void> {
+    isLoading = true;
+    loadError = null;
+
+    try {
+      status = await getEnvironmentStatus();
+    } catch (error) {
+      loadError = environmentErrorMessage(error);
+    } finally {
+      isLoading = false;
+    }
+  }
+
+  onMount(() => {
+    void refreshEnvironment();
+  });
 </script>
 
 <svelte:head>
-  <title>Git Identity Manager</title>
+  <title>Overview · Git Identity Manager</title>
 </svelte:head>
 
 <main class="min-h-screen bg-stone-950 text-stone-100">
@@ -27,6 +47,7 @@
               item.id === 'overview' ? 'bg-white/10 text-white' : 'text-stone-300'
             }`}
             href={`#${item.id}`}
+            aria-current={item.id === 'overview' ? 'page' : undefined}
           >
             {item.label}
           </a>
@@ -36,30 +57,21 @@
 
     <section class="px-10 py-12">
       <div class="max-w-4xl">
-        <p class="text-sm font-medium text-sky-300">Milestone 0 bootstrap</p>
-        <h2 class="mt-3 text-4xl font-semibold tracking-tight text-white">
-          A safe desktop control plane for Git and GitHub identities.
-        </h2>
-        <p class="mt-5 max-w-2xl text-base leading-7 text-stone-300">
-          The project shell is ready for incremental milestones. Product features begin in
-          Milestone 1 with dependency detection from the Rust backend.
+        <p class="text-sm font-medium text-sky-300">Overview</p>
+        <h2 class="mt-3 text-4xl font-semibold tracking-tight text-white">Environment readiness</h2>
+        <p class="mt-4 max-w-2xl text-base leading-7 text-stone-300">
+          Git Identity Manager checks the local tools it needs without installing software or
+          exposing shell access to the interface.
         </p>
 
-        <div class="mt-10 grid gap-4 md:grid-cols-3">
-          {#each pillars as pillar (pillar)}
-            <article class="rounded-2xl border border-white/10 bg-white/[0.03] p-5 shadow-2xl shadow-black/10">
-              <p class="text-sm leading-6 text-stone-200">{pillar}</p>
-            </article>
-          {/each}
+        <div class="mt-10">
+          <EnvironmentStatusPanel
+            {status}
+            loading={isLoading}
+            error={loadError}
+            onRefresh={refreshEnvironment}
+          />
         </div>
-
-        <section class="mt-10 rounded-2xl border border-white/10 bg-stone-900/50 p-6" aria-labelledby="next-step">
-          <h3 id="next-step" class="text-base font-semibold text-white">Next implementation step</h3>
-          <p class="mt-2 text-sm leading-6 text-stone-300">
-            Add typed Tauri commands for environment status, detecting <code>git</code> and
-            <code>gh</code> without exposing shell access to the frontend.
-          </p>
-        </section>
       </div>
     </section>
   </div>

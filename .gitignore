@@ -9,4 +9,5 @@ src-tauri/gen
 .env.*
 !.env.example
 docs
+plan
 AGENTS.md

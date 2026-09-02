@@ -2,7 +2,7 @@
 
 Git Identity Manager is a local-first desktop utility for managing multiple Git and GitHub identities on one computer.
 
-The project is currently in Milestone 0: architecture and bootstrap. Product functionality starts in Milestone 1 with local dependency detection for `git` and `gh`.
+Milestone 1 adds read-only local dependency detection for `git` and `gh`. The overview reports availability and normalized versions through a narrow typed Tauri command.
 
 ## Stack
 
