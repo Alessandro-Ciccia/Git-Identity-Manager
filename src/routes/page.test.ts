@@ -59,19 +59,35 @@ const profile: GitProfile = {
   githubAccount: { hostname: 'github.com', username: 'personal' },
 };
 
+type InitialStateOptions = {
+  repositories?: RegisteredRepository[];
+  welcomeDismissed?: boolean;
+  environmentReady?: boolean;
+};
+
 function mockInitialState(
   profiles: GitProfile[],
-  repositories: RegisteredRepository[] = [repository],
+  {
+    repositories = [repository],
+    welcomeDismissed = true,
+    environmentReady = true,
+  }: InitialStateOptions = {},
 ): void {
   invokeMock.mockImplementation((command) => {
     switch (command) {
+      case 'get_preferences':
+        return Promise.resolve({ theme: 'system', welcomeDismissed });
+      case 'set_theme_preference':
+        return Promise.resolve({ theme: 'dark', welcomeDismissed });
+      case 'set_welcome_dismissed':
+        return Promise.resolve({ theme: 'system', welcomeDismissed: true });
       case 'get_environment_status':
         return Promise.resolve({
           git: {
             dependency: 'git',
-            state: 'available',
-            version: '2.47.0',
-            message: 'Git is available.',
+            state: environmentReady ? 'available' : 'missing',
+            version: environmentReady ? '2.47.0' : null,
+            message: environmentReady ? 'Git is available.' : 'Git is not installed.',
           },
           githubCli: {
             dependency: 'githubCli',
@@ -79,7 +95,7 @@ function mockInitialState(
             version: '2.73.0',
             message: 'GitHub CLI is available.',
           },
-          isReady: true,
+          isReady: environmentReady,
         });
       case 'list_github_accounts':
         return Promise.resolve({
@@ -174,7 +190,7 @@ describe('profiles page flow', () => {
     openMock.mockReset();
   });
 
-  it('loads profiles and exposes only implemented navigation sections', async () => {
+  it('loads profiles and exposes the navigation sections', async () => {
     const user = userEvent.setup();
     mockInitialState([profile]);
     render(Page);
@@ -185,7 +201,90 @@ describe('profiles page flow', () => {
     expect(await screen.findByRole('heading', { name: 'Personal' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Repositories' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Rules' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Settings' })).toBeEnabled();
     expect(invokeMock).toHaveBeenCalledWith('list_profiles');
+  });
+
+  it('navigates the sidebar with arrow keys', async () => {
+    const user = userEvent.setup();
+    mockInitialState([profile]);
+    render(Page);
+    await screen.findByRole('heading', { name: 'Identity overview' });
+
+    screen.getByRole('button', { name: 'Overview' }).focus();
+    await user.keyboard('{ArrowDown}');
+    expect(screen.getByRole('button', { name: 'Profiles' })).toHaveFocus();
+
+    await user.keyboard('{End}');
+    expect(screen.getByRole('button', { name: 'Settings' })).toHaveFocus();
+
+    await user.keyboard('{Enter}');
+    expect(
+      await screen.findByRole('heading', { name: 'Application preferences' }),
+    ).toBeInTheDocument();
+  });
+
+  it('persists a theme change through the Settings section', async () => {
+    const user = userEvent.setup();
+    mockInitialState([profile]);
+    render(Page);
+    await screen.findByRole('heading', { name: 'Identity overview' });
+
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    await user.click(screen.getByRole('radio', { name: 'Dark' }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('set_theme_preference', { theme: 'dark' });
+    });
+    expect(document.documentElement.dataset.theme).toBe('dark');
+  });
+
+  it('shows the first-run welcome screen until it is skipped', async () => {
+    const user = userEvent.setup();
+    mockInitialState([], { repositories: [], welcomeDismissed: false });
+    render(Page);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Let’s set up Git Identity Manager' }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Skip for now' }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('set_welcome_dismissed', { dismissed: true });
+    });
+    expect(await screen.findByRole('heading', { name: 'Identity overview' })).toBeInTheDocument();
+  });
+
+  it('shows the welcome screen when a required tool is missing even with data present', async () => {
+    mockInitialState([profile], { welcomeDismissed: false, environmentReady: false });
+    render(Page);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Let’s set up Git Identity Manager' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Git is not installed.')).toBeInTheDocument();
+  });
+
+  it('lets the sidebar navigate away from the welcome screen without dismissing it', async () => {
+    const user = userEvent.setup();
+    mockInitialState([profile], { welcomeDismissed: false, environmentReady: false });
+    render(Page);
+    await screen.findByRole('heading', { name: 'Let’s set up Git Identity Manager' });
+
+    await user.click(screen.getByRole('button', { name: 'Repositories' }));
+    expect(
+      await screen.findByRole('heading', { name: 'Repository identities' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: 'Let’s set up Git Identity Manager' }),
+    ).not.toBeInTheDocument();
+    expect(invokeMock).not.toHaveBeenCalledWith('set_welcome_dismissed', expect.anything());
+
+    await user.click(screen.getByRole('button', { name: 'Overview' }));
+    expect(
+      await screen.findByRole('heading', { name: 'Let’s set up Git Identity Manager' }),
+    ).toBeInTheDocument();
   });
 
   it('opens the repositories view with effective identity and source data', async () => {
@@ -206,7 +305,7 @@ describe('profiles page flow', () => {
 
   it('registers a directory selected by the native picker and ignores cancellation', async () => {
     const user = userEvent.setup();
-    mockInitialState([], []);
+    mockInitialState([], { repositories: [] });
     openMock.mockResolvedValueOnce(null).mockResolvedValueOnce('/selected/project');
     render(Page);
 

@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "description": "A local-first desktop utility for managing Git and GitHub identities.",
   "type": "module",
+  "packageManager": "pnpm@11.24.0",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",

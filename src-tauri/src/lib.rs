@@ -24,6 +24,11 @@ pub fn run() {
                     .as_ref()
                     .map(|directory| directory.join("repositories.v1.json")),
             ));
+            app.manage(commands::preferences::PreferencesState::new(
+                app_data_directory
+                    .as_ref()
+                    .map(|directory| directory.join("preferences.v1.json")),
+            ));
             app.manage(commands::directory_rules::DirectoryRulesState::new(
                 app_data_directory.map(|directory| directory.join("directory-rules.v1.json")),
                 app_config_directory
@@ -54,6 +59,9 @@ pub fn run() {
             commands::github::list_github_accounts,
             commands::github::switch_github_account,
             commands::github::launch_github_login,
+            commands::preferences::get_preferences,
+            commands::preferences::set_theme_preference,
+            commands::preferences::set_welcome_dismissed,
             commands::profiles::list_profiles,
             commands::profiles::create_profile,
             commands::profiles::update_profile,

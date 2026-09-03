@@ -6,6 +6,8 @@
   import GithubAccountsPanel from '$lib/components/GithubAccountsPanel.svelte';
   import ProfilesPanel from '$lib/components/ProfilesPanel.svelte';
   import RepositoriesPanel from '$lib/components/RepositoriesPanel.svelte';
+  import SettingsPanel from '$lib/components/SettingsPanel.svelte';
+  import WelcomeScreen from '$lib/components/WelcomeScreen.svelte';
   import type {
     DirectoryRule,
     DirectoryRuleInput,
@@ -30,6 +32,12 @@
     removeDirectoryRule,
   } from '$lib/ipc/directoryRules';
   import { environmentErrorMessage, getEnvironmentStatus } from '$lib/ipc/environment';
+  import {
+    getPreferences,
+    preferenceErrorMessage,
+    setThemePreference,
+    setWelcomeDismissed,
+  } from '$lib/ipc/preferences';
   import {
     githubCliUpdateRecommended,
     githubErrorMessage,
@@ -60,10 +68,12 @@
     revealRepository,
   } from '$lib/ipc/repositories';
   import { selectRepositoryDirectory } from '$lib/native/directoryPicker';
+  import type { ThemePreference } from '$lib/domain/preferences';
+  import { theme } from '$lib/state/theme.svelte';
 
   type ImplementedSection = Extract<
     NavigationSection,
-    'overview' | 'profiles' | 'repositories' | 'rules'
+    'overview' | 'profiles' | 'repositories' | 'rules' | 'settings'
   >;
 
   let activeSection = $state<ImplementedSection>('overview');
@@ -104,6 +114,32 @@
   let directoryRulesSuccess = $state<string | null>(null);
   let directoryRulePending = $state(false);
   let directoryRulePreview = $state<DirectoryRulePreview | null>(null);
+  let themePreference = $state<ThemePreference>('system');
+  let preferencesLoading = $state(true);
+  let preferencesError = $state<string | null>(null);
+  let themePending = $state(false);
+  let welcomeDismissed = $state(true);
+  let welcomeSkipping = $state(false);
+  let welcomeSkipError = $state<string | null>(null);
+
+  const initialLoadPending = $derived(
+    isLoading ||
+      githubLoading ||
+      profilesLoading ||
+      repositoriesLoading ||
+      directoryRulesLoading ||
+      preferencesLoading,
+  );
+  const welcomeApplies = $derived(
+    !welcomeDismissed &&
+      !initialLoadPending &&
+      status !== null &&
+      (!status.isReady ||
+        (profiles.length === 0 && repositories.length === 0 && directoryRules.length === 0)),
+  );
+  // The welcome screen stands in for the Overview until setup is done; every other
+  // section stays reachable from the sidebar so it never traps navigation.
+  const showWelcome = $derived(welcomeApplies && activeSection === 'overview');
 
   const LOGIN_POLL_INTERVAL_MS = 3_000;
   const LOGIN_POLL_ATTEMPTS = 40;
@@ -117,7 +153,8 @@
       section === 'overview' ||
       section === 'profiles' ||
       section === 'repositories' ||
-      section === 'rules'
+      section === 'rules' ||
+      section === 'settings'
     );
   }
 
@@ -125,6 +162,97 @@
     if (isImplementedSection(section)) {
       activeSection = section;
     }
+  }
+
+  function onNavKeydown(event: globalThis.KeyboardEvent): void {
+    const keys = ['ArrowDown', 'ArrowUp', 'Home', 'End'];
+    if (!keys.includes(event.key)) {
+      return;
+    }
+    event.preventDefault();
+    const buttons = Array.from(
+      event.currentTarget instanceof globalThis.HTMLElement
+        ? event.currentTarget.querySelectorAll<globalThis.HTMLButtonElement>(
+            'button:not([disabled])',
+          )
+        : [],
+    );
+    if (buttons.length === 0) {
+      return;
+    }
+    const currentIndex = buttons.findIndex(
+      (button) => button === globalThis.document.activeElement,
+    );
+    let nextIndex: number;
+    if (event.key === 'Home') {
+      nextIndex = 0;
+    } else if (event.key === 'End') {
+      nextIndex = buttons.length - 1;
+    } else {
+      const delta = event.key === 'ArrowDown' ? 1 : -1;
+      const base = currentIndex === -1 ? 0 : currentIndex;
+      nextIndex = (base + delta + buttons.length) % buttons.length;
+    }
+    buttons[nextIndex]?.focus();
+  }
+
+  async function refreshPreferences(): Promise<void> {
+    preferencesLoading = true;
+    preferencesError = null;
+
+    try {
+      const preferences = await getPreferences();
+      themePreference = preferences.theme;
+      welcomeDismissed = preferences.welcomeDismissed;
+      theme.init(preferences.theme);
+    } catch (error) {
+      preferencesError = preferenceErrorMessage(error);
+    } finally {
+      preferencesLoading = false;
+    }
+  }
+
+  async function changeTheme(preference: ThemePreference): Promise<void> {
+    const previous = themePreference;
+    themePreference = preference;
+    theme.setPreference(preference);
+    themePending = true;
+    preferencesError = null;
+
+    try {
+      const preferences = await setThemePreference(preference);
+      themePreference = preferences.theme;
+      theme.setPreference(preferences.theme);
+    } catch (error) {
+      themePreference = previous;
+      theme.setPreference(previous);
+      preferencesError = preferenceErrorMessage(error);
+    } finally {
+      themePending = false;
+    }
+  }
+
+  async function skipWelcome(): Promise<void> {
+    welcomeSkipping = true;
+    welcomeSkipError = null;
+
+    try {
+      const preferences = await setWelcomeDismissed(true);
+      welcomeDismissed = preferences.welcomeDismissed;
+    } catch (error) {
+      welcomeSkipError = preferenceErrorMessage(error);
+    } finally {
+      welcomeSkipping = false;
+    }
+  }
+
+  function startProfileFromWelcome(): void {
+    activeSection = 'profiles';
+  }
+
+  function startRepositoryFromWelcome(): void {
+    activeSection = 'repositories';
+    void addRepository();
   }
 
   function finishLoginTracking(): void {
@@ -568,7 +696,16 @@
     }
   }
 
+  const sectionTitles: Record<ImplementedSection, string> = {
+    overview: 'Overview',
+    profiles: 'Profiles',
+    repositories: 'Repositories',
+    rules: 'Rules',
+    settings: 'Settings',
+  };
+
   onMount(() => {
+    void refreshPreferences();
     void refreshEnvironment();
     void refreshGithubAccounts();
     void refreshProfiles();
@@ -578,38 +715,35 @@
 </script>
 
 <svelte:head>
-  <title
-    >{activeSection === 'profiles'
-      ? 'Profiles'
-      : activeSection === 'repositories'
-        ? 'Repositories'
-        : activeSection === 'rules'
-          ? 'Rules'
-          : 'Overview'} · Git Identity Manager</title
-  >
+  <title>{showWelcome ? 'Welcome' : sectionTitles[activeSection]} · Git Identity Manager</title>
 </svelte:head>
 
-<main class="min-h-screen bg-stone-950 text-stone-100">
-  <div class="grid min-h-screen grid-cols-[220px_1fr]">
-    <aside class="border-r border-white/10 bg-stone-950/80 p-4">
+<main class="h-screen overflow-hidden bg-canvas text-fg-strong">
+  <div class="grid h-full grid-cols-[220px_1fr]">
+    <aside class="flex h-full flex-col overflow-hidden border-r border-edge bg-canvas/80 p-4">
       <div class="mb-8">
-        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-sky-300">Local-first</p>
+        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-accent-text">
+          Local-first
+        </p>
         <h1 class="mt-2 text-lg font-semibold">Git Identity Manager</h1>
       </div>
 
-      <nav aria-label="Primary navigation" class="space-y-1">
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+      <nav aria-label="Primary navigation" class="space-y-1" onkeydown={onNavKeydown}>
         {#each navigationItems as item (item.id)}
+          {@const implemented = isImplementedSection(item.id)}
           <button
             type="button"
             class={`block w-full rounded-lg px-3 py-2 text-left text-sm transition ${
               activeSection === item.id
-                ? 'bg-white/10 text-white'
-                : isImplementedSection(item.id)
-                  ? 'text-stone-300 hover:bg-white/5 hover:text-white'
-                  : 'cursor-not-allowed text-stone-600'
+                ? 'bg-hover-strong text-fg-strong'
+                : implemented
+                  ? 'text-fg hover:bg-hover hover:text-fg-strong'
+                  : 'cursor-not-allowed text-fg-faint'
             }`}
             onclick={() => selectSection(item.id)}
-            disabled={!isImplementedSection(item.id)}
+            disabled={!implemented}
+            tabindex={activeSection === item.id ? 0 : -1}
             aria-current={activeSection === item.id ? 'page' : undefined}
           >
             {item.label}
@@ -618,12 +752,27 @@
       </nav>
     </aside>
 
-    <section class="px-10 py-12">
+    <section class="h-full overflow-y-auto px-10 py-12">
       <div class="max-w-4xl">
-        {#if activeSection === 'overview'}
-          <p class="text-sm font-medium text-sky-300">Overview</p>
-          <h2 class="mt-3 text-4xl font-semibold tracking-tight text-white">Identity overview</h2>
-          <p class="mt-4 max-w-2xl text-base leading-7 text-stone-300">
+        {#if showWelcome}
+          <WelcomeScreen
+            {status}
+            envLoading={isLoading}
+            hasProfiles={profiles.length > 0}
+            hasRepositories={repositories.length > 0}
+            skipping={welcomeSkipping}
+            skipError={welcomeSkipError}
+            onRecheck={refreshEnvironment}
+            onCreateProfile={startProfileFromWelcome}
+            onAddRepository={startRepositoryFromWelcome}
+            onSkip={skipWelcome}
+          />
+        {:else if activeSection === 'overview'}
+          <p class="text-sm font-medium text-accent-text">Overview</p>
+          <h2 class="mt-3 text-4xl font-semibold tracking-tight text-fg-strong">
+            Identity overview
+          </h2>
+          <p class="mt-4 max-w-2xl text-base leading-7 text-fg">
             See the GitHub accounts already managed by GitHub CLI and switch the active account
             without exposing credentials to the interface.
           </p>
@@ -655,9 +804,11 @@
             />
           </div>
         {:else if activeSection === 'profiles'}
-          <p class="text-sm font-medium text-sky-300">Profiles</p>
-          <h2 class="mt-3 text-4xl font-semibold tracking-tight text-white">Reusable identities</h2>
-          <p class="mt-4 max-w-2xl text-base leading-7 text-stone-300">
+          <p class="text-sm font-medium text-accent-text">Profiles</p>
+          <h2 class="mt-3 text-4xl font-semibold tracking-tight text-fg-strong">
+            Reusable identities
+          </h2>
+          <p class="mt-4 max-w-2xl text-base leading-7 text-fg">
             Keep Git names and emails consistent, and optionally connect each profile to an account
             already managed by GitHub CLI.
           </p>
@@ -677,11 +828,11 @@
             />
           </div>
         {:else if activeSection === 'repositories'}
-          <p class="text-sm font-medium text-sky-300">Repositories</p>
-          <h2 class="mt-3 text-4xl font-semibold tracking-tight text-white">
+          <p class="text-sm font-medium text-accent-text">Repositories</p>
+          <h2 class="mt-3 text-4xl font-semibold tracking-tight text-fg-strong">
             Repository identities
           </h2>
-          <p class="mt-4 max-w-2xl text-base leading-7 text-stone-300">
+          <p class="mt-4 max-w-2xl text-base leading-7 text-fg">
             Inspect each repository’s effective Git identity, configuration source, and remotes
             without changing local or global Git configuration.
           </p>
@@ -713,12 +864,12 @@
               onApplyProfile={applyRegisteredRepositoryProfile}
             />
           </div>
-        {:else}
-          <p class="text-sm font-medium text-sky-300">Rules</p>
-          <h2 class="mt-3 text-4xl font-semibold tracking-tight text-white">
+        {:else if activeSection === 'rules'}
+          <p class="text-sm font-medium text-accent-text">Rules</p>
+          <h2 class="mt-3 text-4xl font-semibold tracking-tight text-fg-strong">
             Directory identity rules
           </h2>
-          <p class="mt-4 max-w-2xl text-base leading-7 text-stone-300">
+          <p class="mt-4 max-w-2xl text-base leading-7 text-fg">
             Automatically resolve a profile for repositories below a directory through safe,
             previewed Git conditional includes.
           </p>
@@ -738,6 +889,24 @@
               onPreviewRemove={previewRuleRemoval}
               onCancelPreview={cancelRulePreview}
               onApply={applyRulePreview}
+            />
+          </div>
+        {:else}
+          <p class="text-sm font-medium text-accent-text">Settings</p>
+          <h2 class="mt-3 text-4xl font-semibold tracking-tight text-fg-strong">
+            Application preferences
+          </h2>
+          <p class="mt-4 max-w-2xl text-base leading-7 text-fg">
+            Adjust how Git Identity Manager looks and review where it stores data on this computer.
+          </p>
+
+          <div class="mt-10">
+            <SettingsPanel
+              theme={themePreference}
+              resolved={theme.resolved}
+              pending={themePending || preferencesLoading}
+              error={preferencesError}
+              onSetTheme={changeTheme}
             />
           </div>
         {/if}

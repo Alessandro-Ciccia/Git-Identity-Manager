@@ -630,6 +630,7 @@ impl<R: ProcessRunner + Clone> DirectoryRulesService<R> {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn restore_after_failure(
         &self,
         global_path: &Path,

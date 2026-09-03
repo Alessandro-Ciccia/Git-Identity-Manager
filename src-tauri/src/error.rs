@@ -4,6 +4,7 @@ use crate::services::{
     directory_rules::DirectoryRuleError,
     git::{GitIdentityApplyError, GitInspectionError},
     github_cli::GithubCliError,
+    preferences::PreferenceError,
     profiles::ProfileError,
     repositories::RepositoryError,
     repository_assignment::RepositoryAssignmentError,
@@ -67,6 +68,10 @@ pub(crate) enum AppError {
     GitConfigVerificationFailed { message: &'static str },
     GitConfigRollbackFailed { message: &'static str },
     DirectoryRuleOperationFailed { message: &'static str },
+    PreferenceStorageUnavailable { message: &'static str },
+    PreferenceStorageFailed { message: &'static str },
+    PreferenceDataMalformed { message: &'static str },
+    PreferenceOperationFailed { message: &'static str },
 }
 
 impl AppError {
@@ -121,6 +126,12 @@ impl AppError {
     pub(crate) fn directory_rule_operation_failed() -> Self {
         Self::DirectoryRuleOperationFailed {
             message: "The directory rule operation could not be completed. Please try again.",
+        }
+    }
+
+    pub(crate) fn preference_operation_failed() -> Self {
+        Self::PreferenceOperationFailed {
+            message: "The preference could not be updated. Please try again.",
         }
     }
 
@@ -313,6 +324,24 @@ impl From<ProfileError> for AppError {
             },
             ProfileError::NotFound => Self::ProfileNotFound {
                 message: "That profile no longer exists. Refresh profiles and try again.",
+            },
+        }
+    }
+}
+
+impl From<PreferenceError> for AppError {
+    fn from(error: PreferenceError) -> Self {
+        match error {
+            PreferenceError::StorageUnavailable => Self::PreferenceStorageUnavailable {
+                message: "Local preference storage is not available on this system.",
+            },
+            PreferenceError::StorageReadFailed | PreferenceError::StorageWriteFailed => {
+                Self::PreferenceStorageFailed {
+                    message: "Preferences could not be read or saved. Check application data permissions and try again.",
+                }
+            }
+            PreferenceError::MalformedData => Self::PreferenceDataMalformed {
+                message: "Stored preference data could not be read safely.",
             },
         }
     }

@@ -12,6 +12,7 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Git Identity Manager",
         "width": 1120,
         "height": 760,

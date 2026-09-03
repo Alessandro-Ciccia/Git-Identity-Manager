@@ -5,21 +5,257 @@
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
+/*
+ * Semantic color tokens. Dark is the base palette (on bare :root) so the app renders
+ * correctly with no JavaScript and no media-query support. The light palette is applied
+ * for the "system" preference on a light OS (pure CSS, no flash) and for an explicit
+ * [data-theme='light'] override set by the in-app toggle. [data-theme='dark'] re-asserts
+ * the base so the toggle wins over a light OS too. Components reference only the mapped
+ * `--color-*` utilities below, never raw scale colors.
+ */
 :root {
-  color-scheme: dark;
+  --canvas: #0b0a10;
+  --surface: rgba(32, 28, 44, 0.55);
+  --surface-overlay: #191622;
+  --surface-raised: rgba(0, 0, 0, 0.16);
+  --surface-input: rgba(11, 10, 16, 0.7);
+  --surface-sunken: rgba(11, 10, 16, 0.45);
+  --hover: rgba(167, 139, 250, 0.08);
+  --hover-strong: rgba(167, 139, 250, 0.14);
+  --edge: rgba(167, 139, 250, 0.13);
+  --edge-strong: rgba(167, 139, 250, 0.2);
+  --edge-hover: rgba(167, 139, 250, 0.32);
+
+  --fg-strong: #f4f2fa;
+  --fg: #cfcada;
+  --fg-muted: #9c94ad;
+  --fg-subtle: #746c85;
+  --fg-faint: #564f66;
+
+  --accent: #a78bfa;
+  --accent-hover: #c4b5fd;
+  --accent-strong: #8b5cf6;
+  --on-accent: #0b0a10;
+  --accent-text: #baa4fb;
+  --accent-soft: rgba(167, 139, 250, 0.14);
+  --accent-softer: rgba(167, 139, 250, 0.07);
+  --accent-edge: rgba(167, 139, 250, 0.3);
+
+  --positive: #6ee7b7;
+  --positive-soft: rgba(52, 211, 153, 0.1);
+  --positive-softer: rgba(52, 211, 153, 0.05);
+  --positive-edge: rgba(52, 211, 153, 0.2);
+
+  --warning: #fde68a;
+  --warning-soft: rgba(251, 191, 36, 0.1);
+  --warning-softer: rgba(251, 191, 36, 0.05);
+  --warning-edge: rgba(251, 191, 36, 0.2);
+  --warning-solid: #fde68a;
+  --on-warning: #0b0a10;
+
+  --danger: #fecdd3;
+  --danger-soft: rgba(251, 113, 133, 0.1);
+  --danger-softer: rgba(251, 113, 133, 0.05);
+  --danger-edge: rgba(251, 113, 133, 0.2);
+  --danger-solid: #fda4af;
+  --danger-solid-hover: #fecdd3;
+  --on-danger: #0b0a10;
+
+  --info: #a78bfa;
+  --info-soft: rgba(167, 139, 250, 0.14);
+  --info-softer: rgba(167, 139, 250, 0.07);
+  --info-edge: rgba(167, 139, 250, 0.3);
+}
+
+/* Light palette — kept in sync with the dark block above, token for token. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    --canvas: #faf9fd;
+    --surface: #ffffff;
+    --surface-overlay: #ffffff;
+    --surface-raised: #f5f3fa;
+    --surface-input: #ffffff;
+    --surface-sunken: #f7f5fc;
+    --hover: rgba(124, 58, 237, 0.06);
+    --hover-strong: rgba(124, 58, 237, 0.11);
+    --edge: rgba(76, 40, 130, 0.14);
+    --edge-strong: rgba(76, 40, 130, 0.22);
+    --edge-hover: rgba(76, 40, 130, 0.34);
+
+    --fg-strong: #1c1726;
+    --fg: #2c2738;
+    --fg-muted: #5b5470;
+    --fg-subtle: #7c7591;
+    --fg-faint: #a8a1ba;
+
+    --accent: #7c3aed;
+    --accent-hover: #6d28d9;
+    --accent-strong: #7c3aed;
+    --on-accent: #ffffff;
+    --accent-text: #6d28d9;
+    --accent-soft: rgba(124, 58, 237, 0.1);
+    --accent-softer: rgba(124, 58, 237, 0.06);
+    --accent-edge: rgba(124, 58, 237, 0.28);
+
+    --positive: #047857;
+    --positive-soft: rgba(5, 150, 105, 0.1);
+    --positive-softer: rgba(5, 150, 105, 0.06);
+    --positive-edge: rgba(5, 150, 105, 0.25);
+
+    --warning: #b45309;
+    --warning-soft: rgba(217, 119, 6, 0.12);
+    --warning-softer: rgba(217, 119, 6, 0.06);
+    --warning-edge: rgba(217, 119, 6, 0.28);
+    --warning-solid: #d97706;
+    --on-warning: #ffffff;
+
+    --danger: #b91c1c;
+    --danger-soft: rgba(220, 38, 38, 0.1);
+    --danger-softer: rgba(220, 38, 38, 0.06);
+    --danger-edge: rgba(220, 38, 38, 0.25);
+    --danger-solid: #e11d48;
+    --danger-solid-hover: #be123c;
+    --on-danger: #ffffff;
+
+    --info: #6d28d9;
+    --info-soft: rgba(124, 58, 237, 0.1);
+    --info-softer: rgba(124, 58, 237, 0.06);
+    --info-edge: rgba(124, 58, 237, 0.28);
+  }
+}
+
+:root[data-theme='light'] {
+  --canvas: #faf9fd;
+  --surface: #ffffff;
+  --surface-overlay: #ffffff;
+  --surface-raised: #f5f3fa;
+  --surface-input: #ffffff;
+  --surface-sunken: #f7f5fc;
+  --hover: rgba(124, 58, 237, 0.06);
+  --hover-strong: rgba(124, 58, 237, 0.11);
+  --edge: rgba(76, 40, 130, 0.14);
+  --edge-strong: rgba(76, 40, 130, 0.22);
+  --edge-hover: rgba(76, 40, 130, 0.34);
+
+  --fg-strong: #1c1726;
+  --fg: #2c2738;
+  --fg-muted: #5b5470;
+  --fg-subtle: #7c7591;
+  --fg-faint: #a8a1ba;
+
+  --accent: #7c3aed;
+  --accent-hover: #6d28d9;
+  --accent-strong: #7c3aed;
+  --on-accent: #ffffff;
+  --accent-text: #6d28d9;
+  --accent-soft: rgba(124, 58, 237, 0.1);
+  --accent-softer: rgba(124, 58, 237, 0.06);
+  --accent-edge: rgba(124, 58, 237, 0.28);
+
+  --positive: #047857;
+  --positive-soft: rgba(5, 150, 105, 0.1);
+  --positive-softer: rgba(5, 150, 105, 0.06);
+  --positive-edge: rgba(5, 150, 105, 0.25);
+
+  --warning: #b45309;
+  --warning-soft: rgba(217, 119, 6, 0.12);
+  --warning-softer: rgba(217, 119, 6, 0.06);
+  --warning-edge: rgba(217, 119, 6, 0.28);
+  --warning-solid: #d97706;
+  --on-warning: #ffffff;
+
+  --danger: #b91c1c;
+  --danger-soft: rgba(220, 38, 38, 0.1);
+  --danger-softer: rgba(220, 38, 38, 0.06);
+  --danger-edge: rgba(220, 38, 38, 0.25);
+  --danger-solid: #e11d48;
+  --danger-solid-hover: #be123c;
+  --on-danger: #ffffff;
+
+  --info: #6d28d9;
+  --info-soft: rgba(124, 58, 237, 0.1);
+  --info-softer: rgba(124, 58, 237, 0.06);
+  --info-edge: rgba(124, 58, 237, 0.28);
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-overlay: var(--surface-overlay);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-input: var(--surface-input);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-hover: var(--hover);
+  --color-hover-strong: var(--hover-strong);
+  --color-edge: var(--edge);
+  --color-edge-strong: var(--edge-strong);
+  --color-edge-hover: var(--edge-hover);
+
+  --color-fg-strong: var(--fg-strong);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-fg-faint: var(--fg-faint);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-strong: var(--accent-strong);
+  --color-on-accent: var(--on-accent);
+  --color-accent-text: var(--accent-text);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-softer: var(--accent-softer);
+  --color-accent-edge: var(--accent-edge);
+
+  --color-positive: var(--positive);
+  --color-positive-soft: var(--positive-soft);
+  --color-positive-softer: var(--positive-softer);
+  --color-positive-edge: var(--positive-edge);
+
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-softer: var(--warning-softer);
+  --color-warning-edge: var(--warning-edge);
+  --color-warning-solid: var(--warning-solid);
+  --color-on-warning: var(--on-warning);
+
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-softer: var(--danger-softer);
+  --color-danger-edge: var(--danger-edge);
+  --color-danger-solid: var(--danger-solid);
+  --color-danger-solid-hover: var(--danger-solid-hover);
+  --color-on-danger: var(--on-danger);
+
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-info-softer: var(--info-softer);
+  --color-info-edge: var(--info-edge);
+}
+
+:root {
+  color-scheme: dark light;
   font-family: var(--font-sans);
-  background: #08090b;
-  color: #f5f5f4;
+  background: var(--canvas);
+  color: var(--fg);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+}
+
 body {
   min-width: 320px;
-  min-height: 100vh;
+  height: 100vh;
   margin: 0;
+  overflow: hidden;
 }
 
 button,
@@ -29,8 +265,7 @@ textarea {
   font: inherit;
 }
 
-button:focus-visible,
-a:focus-visible {
-  outline: 2px solid #38bdf8;
+:where(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--accent-strong);
   outline-offset: 2px;
 }

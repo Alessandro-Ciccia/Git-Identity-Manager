@@ -8,6 +8,9 @@ src-tauri/gen
 .env
 .env.*
 !.env.example
-docs
+.pnpm-store
+
+# Internal working files — not part of the public project
 plan
 AGENTS.md
+docs/MILESTONES.md

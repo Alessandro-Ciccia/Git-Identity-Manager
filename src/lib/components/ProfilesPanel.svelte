@@ -1,4 +1,9 @@
 <script lang="ts">
+  import Badge from '$lib/components/ui/Badge.svelte';
+  import Banner from '$lib/components/ui/Banner.svelte';
+  import Button from '$lib/components/ui/Button.svelte';
+  import EmptyState from '$lib/components/ui/EmptyState.svelte';
+  import Panel from '$lib/components/ui/Panel.svelte';
   import { groupGithubAccounts, type GithubAccount } from '$lib/domain/github';
   import {
     emptyProfileDraft,
@@ -119,66 +124,46 @@
   }
 </script>
 
-<section
-  class="overflow-hidden rounded-2xl border border-white/10 bg-stone-900/50"
-  aria-labelledby="profiles-heading"
-  aria-busy={operationPending}
+<Panel
+  eyebrow="Local identities"
+  heading="Git profiles"
+  headingId="profiles-heading"
+  description="Reusable names and emails stored locally without authentication credentials."
+  busy={operationPending}
 >
-  <header
-    class="flex flex-wrap items-start justify-between gap-5 border-b border-white/10 px-6 py-5"
-  >
-    <div>
-      <p class="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-        Local identities
-      </p>
-      <h3 id="profiles-heading" class="mt-2 text-lg font-semibold text-white">Git profiles</h3>
-      <p class="mt-1 max-w-2xl text-sm text-stone-400">
-        Reusable names and emails stored locally without authentication credentials.
-      </p>
-    </div>
+  {#snippet actions()}
+    <Button
+      onclick={onRefresh}
+      disabled={operationPending}
+      pending={loading}
+      pendingLabel="Refreshing…"
+    >
+      Refresh
+    </Button>
+    <Button
+      variant="primary"
+      onclick={startCreate}
+      disabled={operationPending || formMode === 'create'}
+    >
+      New profile
+    </Button>
+  {/snippet}
 
-    <div class="flex items-center gap-2">
-      <button
-        type="button"
-        class="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-stone-200 transition hover:border-white/20 hover:bg-white/10 disabled:cursor-wait disabled:opacity-60"
-        onclick={onRefresh}
-        disabled={operationPending}
-      >
-        {loading ? 'Refreshing…' : 'Refresh'}
-      </button>
-      <button
-        type="button"
-        class="rounded-lg bg-sky-300 px-3 py-2 text-sm font-semibold text-stone-950 transition hover:bg-sky-200 disabled:cursor-wait disabled:opacity-60"
-        onclick={startCreate}
-        disabled={operationPending || formMode === 'create'}
-      >
-        New profile
-      </button>
-    </div>
-  </header>
-
-  <div aria-live="polite">
-    {#if error}
-      <div
-        class="border-b border-rose-400/20 bg-rose-400/5 px-6 py-4 text-sm text-rose-200"
-        role="alert"
-      >
-        {error}
-      </div>
-    {/if}
+  <div>
+    {#if error}<Banner tone="danger">{error}</Banner>{/if}
 
     {#if formMode}
       <form
-        class="border-b border-sky-300/15 bg-sky-300/5 px-6 py-6"
+        class="border-b border-accent-edge bg-accent-softer px-6 py-6"
         onsubmit={submitProfile}
         novalidate
       >
         <div class="flex items-start justify-between gap-4">
           <div>
-            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-sky-300">
+            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-accent-text">
               {formMode === 'create' ? 'New profile' : 'Edit profile'}
             </p>
-            <h4 class="mt-2 font-semibold text-white">
+            <h4 class="mt-2 font-semibold text-fg-strong">
               {formMode === 'create'
                 ? 'Define a Git identity'
                 : `Update ${editingProfile?.label ?? 'profile'}`}
@@ -186,7 +171,7 @@
           </div>
           <button
             type="button"
-            class="text-sm font-medium text-stone-400 transition hover:text-white disabled:opacity-60"
+            class="text-sm font-medium text-fg-muted transition hover:text-fg-strong disabled:opacity-60"
             onclick={closeForm}
             disabled={savingProfileId !== null}
           >
@@ -196,12 +181,10 @@
 
         <div class="mt-5 grid gap-5 sm:grid-cols-2">
           <div class="block sm:col-span-2">
-            <label for="profile-label" class="text-sm font-medium text-stone-200"
-              >Profile label</label
-            >
+            <label for="profile-label" class="text-sm font-medium text-fg">Profile label</label>
             <input
               id="profile-label"
-              class="mt-2 w-full rounded-lg border border-white/10 bg-stone-950/70 px-3 py-2.5 text-sm text-white placeholder:text-stone-600 focus:border-sky-300/50 disabled:opacity-60"
+              class="mt-2 w-full rounded-lg border border-edge bg-surface-input px-3 py-2.5 text-sm text-fg-strong placeholder:text-fg-faint focus:border-accent disabled:opacity-60"
               bind:value={draft.label}
               aria-invalid={validationErrors.label ? 'true' : undefined}
               aria-describedby={validationErrors.label ? 'profile-label-error' : undefined}
@@ -209,17 +192,17 @@
               disabled={savingProfileId !== null}
             />
             {#if validationErrors.label}
-              <span id="profile-label-error" class="mt-1.5 block text-xs text-rose-300"
+              <span id="profile-label-error" class="mt-1.5 block text-xs text-danger"
                 >{validationErrors.label}</span
               >
             {/if}
           </div>
 
           <div class="block">
-            <label for="profile-name" class="text-sm font-medium text-stone-200">Git name</label>
+            <label for="profile-name" class="text-sm font-medium text-fg">Git name</label>
             <input
               id="profile-name"
-              class="mt-2 w-full rounded-lg border border-white/10 bg-stone-950/70 px-3 py-2.5 text-sm text-white placeholder:text-stone-600 focus:border-sky-300/50 disabled:opacity-60"
+              class="mt-2 w-full rounded-lg border border-edge bg-surface-input px-3 py-2.5 text-sm text-fg-strong placeholder:text-fg-faint focus:border-accent disabled:opacity-60"
               bind:value={draft.gitName}
               aria-invalid={validationErrors.gitName ? 'true' : undefined}
               aria-describedby={validationErrors.gitName ? 'profile-name-error' : undefined}
@@ -227,18 +210,18 @@
               disabled={savingProfileId !== null}
             />
             {#if validationErrors.gitName}
-              <span id="profile-name-error" class="mt-1.5 block text-xs text-rose-300"
+              <span id="profile-name-error" class="mt-1.5 block text-xs text-danger"
                 >{validationErrors.gitName}</span
               >
             {/if}
           </div>
 
           <div class="block">
-            <label for="profile-email" class="text-sm font-medium text-stone-200">Git email</label>
+            <label for="profile-email" class="text-sm font-medium text-fg">Git email</label>
             <input
               id="profile-email"
               type="email"
-              class="mt-2 w-full rounded-lg border border-white/10 bg-stone-950/70 px-3 py-2.5 text-sm text-white placeholder:text-stone-600 focus:border-sky-300/50 disabled:opacity-60"
+              class="mt-2 w-full rounded-lg border border-edge bg-surface-input px-3 py-2.5 text-sm text-fg-strong placeholder:text-fg-faint focus:border-accent disabled:opacity-60"
               bind:value={draft.gitEmail}
               aria-invalid={validationErrors.gitEmail ? 'true' : undefined}
               aria-describedby={validationErrors.gitEmail ? 'profile-email-error' : undefined}
@@ -246,19 +229,17 @@
               disabled={savingProfileId !== null}
             />
             {#if validationErrors.gitEmail}
-              <span id="profile-email-error" class="mt-1.5 block text-xs text-rose-300"
+              <span id="profile-email-error" class="mt-1.5 block text-xs text-danger"
                 >{validationErrors.gitEmail}</span
               >
             {/if}
           </div>
 
           <div class="block sm:col-span-2">
-            <label for="profile-account" class="text-sm font-medium text-stone-200"
-              >GitHub account</label
-            >
+            <label for="profile-account" class="text-sm font-medium text-fg">GitHub account</label>
             <select
               id="profile-account"
-              class="mt-2 w-full rounded-lg border border-white/10 bg-stone-950/70 px-3 py-2.5 text-sm text-white focus:border-sky-300/50 disabled:opacity-60"
+              class="mt-2 w-full rounded-lg border border-edge bg-surface-input px-3 py-2.5 text-sm text-fg-strong focus:border-accent disabled:opacity-60"
               bind:value={draft.githubAccountKey}
               aria-invalid={validationErrors.githubAccount ? 'true' : undefined}
               aria-describedby={validationErrors.githubAccount
@@ -284,11 +265,11 @@
               {/each}
             </select>
             {#if validationErrors.githubAccount}
-              <span id="profile-account-error" class="mt-1.5 block text-xs text-rose-300"
+              <span id="profile-account-error" class="mt-1.5 block text-xs text-danger"
                 >{validationErrors.githubAccount}</span
               >
             {:else}
-              <span id="profile-account-help" class="mt-1.5 block text-xs text-stone-500">
+              <span id="profile-account-help" class="mt-1.5 block text-xs text-fg-subtle">
                 Only the account hostname and username are saved.
               </span>
             {/if}
@@ -296,17 +277,13 @@
         </div>
 
         <div class="mt-6 flex justify-end">
-          <button
-            type="submit"
-            class="rounded-lg bg-sky-300 px-4 py-2.5 text-sm font-semibold text-stone-950 transition hover:bg-sky-200 disabled:cursor-wait disabled:opacity-60"
-            disabled={savingProfileId !== null}
-          >
+          <Button type="submit" variant="primary" size="md" disabled={savingProfileId !== null}>
             {savingProfileId !== null
               ? 'Saving…'
               : formMode === 'create'
                 ? 'Create profile'
                 : 'Save changes'}
-          </button>
+          </Button>
         </div>
       </form>
     {/if}
@@ -317,65 +294,58 @@
           {@const associatedAccount = profile.githubAccount
             ? findAssociatedAccount(profile.githubAccount, accounts)
             : undefined}
-          <li class="rounded-xl border border-white/10 bg-black/10 p-5">
+          <li class="rounded-xl border border-edge bg-surface-raised p-5">
             <div class="flex items-start justify-between gap-4">
               <div class="min-w-0">
-                <h4 class="truncate font-semibold text-white">{profile.label}</h4>
-                <p class="mt-3 text-sm text-stone-200">{profile.gitName}</p>
-                <p class="mt-1 break-all font-mono text-xs text-stone-400">{profile.gitEmail}</p>
+                <h4 class="truncate font-semibold text-fg-strong">{profile.label}</h4>
+                <p class="mt-3 text-sm text-fg">{profile.gitName}</p>
+                <p class="mt-1 break-all font-mono text-xs text-fg-muted">{profile.gitEmail}</p>
               </div>
               <button
                 type="button"
-                class="shrink-0 text-sm font-medium text-stone-400 transition hover:text-sky-200 disabled:opacity-60"
+                class="shrink-0 text-sm font-medium text-fg-muted transition hover:text-accent-text disabled:opacity-60"
                 onclick={() => startEdit(profile)}
                 disabled={operationPending}
                 aria-label={`Edit ${profile.label}`}>Edit</button
               >
             </div>
 
-            <div class="mt-5 border-t border-white/10 pt-4">
+            <div class="mt-5 border-t border-edge pt-4">
               <div class="flex flex-wrap items-center gap-2">
-                <p class="text-xs text-stone-400">{associationLabel(profile)}</p>
+                <p class="text-xs text-fg-muted">{associationLabel(profile)}</p>
                 {#if profile.githubAccount && !associatedAccount}
-                  <span
-                    class="rounded-full border border-amber-400/20 bg-amber-400/10 px-2 py-0.5 text-[11px] font-semibold text-amber-200"
-                  >
-                    Not discovered
-                  </span>
+                  <Badge tone="warning">Not discovered</Badge>
                 {:else if associatedAccount?.active}
-                  <span
-                    class="rounded-full border border-sky-300/20 bg-sky-300/10 px-2 py-0.5 text-[11px] font-semibold text-sky-200"
-                  >
-                    Active
-                  </span>
+                  <Badge tone="accent">Active</Badge>
                 {/if}
               </div>
 
               {#if confirmingDeleteId === profile.id}
-                <div class="mt-4 rounded-lg border border-rose-400/20 bg-rose-400/5 p-3">
-                  <p class="text-sm text-rose-100">
+                <div class="mt-4 rounded-lg border border-danger-edge bg-danger-softer p-3">
+                  <p class="text-sm text-danger">
                     Delete this local profile? This cannot be undone.
                   </p>
                   <div class="mt-3 flex justify-end gap-2">
-                    <button
-                      type="button"
-                      class="rounded-md px-2.5 py-1.5 text-xs font-semibold text-stone-300 hover:bg-white/5 disabled:opacity-60"
+                    <Button
+                      variant="ghost"
+                      size="xs"
                       onclick={() => (confirmingDeleteId = null)}
-                      disabled={deletingProfileId !== null}>Cancel</button
+                      disabled={deletingProfileId !== null}>Cancel</Button
                     >
-                    <button
-                      type="button"
-                      class="rounded-md bg-rose-300 px-2.5 py-1.5 text-xs font-semibold text-stone-950 hover:bg-rose-200 disabled:cursor-wait disabled:opacity-60"
+                    <Button
+                      variant="danger"
+                      size="xs"
                       onclick={() => confirmDelete(profile.id)}
                       disabled={deletingProfileId !== null}
-                      >{deletingProfileId === profile.id ? 'Deleting…' : 'Delete profile'}</button
+                      pending={deletingProfileId === profile.id}
+                      pendingLabel="Deleting…">Delete profile</Button
                     >
                   </div>
                 </div>
               {:else}
                 <button
                   type="button"
-                  class="mt-3 text-xs font-medium text-stone-500 transition hover:text-rose-300 disabled:opacity-60"
+                  class="mt-3 text-xs font-medium text-fg-subtle transition hover:text-danger disabled:opacity-60"
                   onclick={() => (confirmingDeleteId = profile.id)}
                   disabled={operationPending}
                   aria-label={`Delete ${profile.label}`}>Delete</button
@@ -387,17 +357,20 @@
       </ul>
     {:else if loading}
       <div class="grid gap-4 p-6 sm:grid-cols-2" aria-label="Loading profiles">
-        <div class="h-44 animate-pulse rounded-xl bg-white/5"></div>
-        <div class="h-44 animate-pulse rounded-xl bg-white/5"></div>
+        <div class="h-44 animate-pulse rounded-xl bg-hover"></div>
+        <div class="h-44 animate-pulse rounded-xl bg-hover"></div>
       </div>
     {:else if !formMode}
-      <div class="px-6 py-10">
-        <p class="font-medium text-white">No profiles yet</p>
-        <p class="mt-2 max-w-xl text-sm leading-6 text-stone-400">
-          Create a reusable Git name and email. Profiles only change repositories in a later
-          milestone.
-        </p>
-      </div>
+      <EmptyState
+        title="No profiles yet"
+        description="Create a reusable Git name and email, then assign it to repositories and directories to keep your identity consistent."
+      >
+        {#snippet action()}
+          <Button variant="primary" onclick={startCreate} disabled={operationPending}>
+            Create your first profile
+          </Button>
+        {/snippet}
+      </EmptyState>
     {/if}
   </div>
-</section>
+</Panel>

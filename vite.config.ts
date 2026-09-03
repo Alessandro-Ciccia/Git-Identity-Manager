@@ -27,6 +27,8 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    // A concrete origin so jsdom enables localStorage (opaque about:blank disables it).
+    environmentOptions: { jsdom: { url: 'http://localhost' } },
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.{test,spec}.ts'],
   },
