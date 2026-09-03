@@ -4,7 +4,6 @@ on:
   pull_request:
   push:
     branches: [main]
-    tags: ['v*']
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -75,9 +74,9 @@ jobs:
 
   build:
     name: Bundle (${{ matrix.os }})
-    # Cross-platform bundle verification runs on pushes to main and on tags,
-    # not on every pull request.
-    if: github.event_name == 'push'
+    # Cross-platform bundle verification runs only on pushes to main, not on
+    # pull requests or tags. Tag pushes are handled by the Release workflow.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [frontend, rust]
     strategy:
       fail-fast: false
