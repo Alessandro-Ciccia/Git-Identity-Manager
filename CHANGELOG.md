@@ -9,6 +9,8 @@ version section.
 
 ## [Unreleased]
 
+## [0.1.0]
+
 ### Added
 
 - **Environment detection** — independent `git` and `gh` detection with version
@@ -41,4 +43,4 @@ version section.
   Integration, a cross-platform build matrix, and a tag-triggered draft-release
   workflow.
 
-[Unreleased]: https://github.com/Alessandro-Ciccia/Git-Identity-Manager/commits/main
+[Released]: https://github.com/Alessandro-Ciccia/Git-Identity-Manager/commits/main
