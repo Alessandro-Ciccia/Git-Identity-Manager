@@ -27,7 +27,7 @@ impl RepositoriesState {
         }
     }
 
-    fn service(&self) -> Arc<Mutex<RepositoriesService>> {
+    pub(crate) fn service(&self) -> Arc<Mutex<RepositoriesService>> {
         Arc::clone(&self.service)
     }
 }

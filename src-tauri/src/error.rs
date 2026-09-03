@@ -1,6 +1,7 @@
 use serde::Serialize;
 
 use crate::services::{
+    directory_rules::DirectoryRuleError,
     git::{GitIdentityApplyError, GitInspectionError},
     github_cli::GithubCliError,
     profiles::ProfileError,
@@ -54,6 +55,18 @@ pub(crate) enum AppError {
     GitIdentityVerificationFailed { message: &'static str },
     GitIdentityRollbackFailed { message: &'static str },
     RepositoryOperationFailed { message: &'static str },
+    DirectoryRuleStorageUnavailable { message: &'static str },
+    DirectoryRuleStorageFailed { message: &'static str },
+    DirectoryRuleDataMalformed { message: &'static str },
+    InvalidDirectoryRuleId { message: &'static str },
+    InvalidDirectoryRulePath { message: &'static str },
+    DirectoryRulePathMissing { message: &'static str },
+    DirectoryRuleNotFound { message: &'static str },
+    DirectoryRuleConflict { message: &'static str },
+    GitConfigWriteFailed { message: &'static str },
+    GitConfigVerificationFailed { message: &'static str },
+    GitConfigRollbackFailed { message: &'static str },
+    DirectoryRuleOperationFailed { message: &'static str },
 }
 
 impl AppError {
@@ -105,6 +118,12 @@ impl AppError {
         }
     }
 
+    pub(crate) fn directory_rule_operation_failed() -> Self {
+        Self::DirectoryRuleOperationFailed {
+            message: "The directory rule operation could not be completed. Please try again.",
+        }
+    }
+
     pub(crate) fn repository_path_missing() -> Self {
         Self::RepositoryPathMissing {
             message: "This repository folder is missing or has moved.",
@@ -114,6 +133,60 @@ impl AppError {
     pub(crate) fn repository_reveal_failed() -> Self {
         Self::RepositoryRevealFailed {
             message: "The repository folder could not be opened.",
+        }
+    }
+}
+
+impl From<DirectoryRuleError> for AppError {
+    fn from(error: DirectoryRuleError) -> Self {
+        match error {
+            DirectoryRuleError::StorageUnavailable => Self::DirectoryRuleStorageUnavailable {
+                message: "Directory rule storage or Git configuration paths are unavailable.",
+            },
+            DirectoryRuleError::StorageReadFailed | DirectoryRuleError::StorageWriteFailed => {
+                Self::DirectoryRuleStorageFailed {
+                    message: "Directory rules could not be read or saved safely.",
+                }
+            }
+            DirectoryRuleError::MalformedData | DirectoryRuleError::GitConfigMalformed => {
+                Self::DirectoryRuleDataMalformed {
+                    message: "Directory rule or Git configuration data could not be read safely.",
+                }
+            }
+            DirectoryRuleError::InvalidId => Self::InvalidDirectoryRuleId {
+                message: "The directory rule identifier is invalid.",
+            },
+            DirectoryRuleError::InvalidPath | DirectoryRuleError::NotDirectory => {
+                Self::InvalidDirectoryRulePath {
+                    message: "Select a valid directory for this rule.",
+                }
+            }
+            DirectoryRuleError::PathNotFound => Self::DirectoryRulePathMissing {
+                message: "The selected directory does not exist or is unavailable.",
+            },
+            DirectoryRuleError::Profile(error) => Self::from(error),
+            DirectoryRuleError::Repository(error) => Self::from(error),
+            DirectoryRuleError::NotFound => Self::DirectoryRuleNotFound {
+                message: "That directory rule no longer exists. Refresh and try again.",
+            },
+            DirectoryRuleError::GitMissing => Self::GitMissing {
+                message: "Git is not installed or is not available on PATH.",
+            },
+            DirectoryRuleError::GitCommandFailed => Self::GitCommandFailed {
+                message: "Git could not inspect the conditional configuration safely.",
+            },
+            DirectoryRuleError::Conflict => Self::DirectoryRuleConflict {
+                message: "Resolve the reported directory rule conflicts before applying this change.",
+            },
+            DirectoryRuleError::WriteFailed => Self::GitConfigWriteFailed {
+                message: "Git configuration could not be updated. Previous contents were restored.",
+            },
+            DirectoryRuleError::VerificationFailed => Self::GitConfigVerificationFailed {
+                message: "The conditional Git configuration could not be verified, so previous contents were restored.",
+            },
+            DirectoryRuleError::RollbackFailed => Self::GitConfigRollbackFailed {
+                message: "Git configuration could not be safely restored. Inspect the shown configuration and backup paths before retrying.",
+            },
         }
     }
 }

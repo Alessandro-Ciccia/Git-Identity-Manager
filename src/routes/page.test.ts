@@ -97,6 +97,8 @@ function mockInitialState(
         return Promise.resolve(profiles);
       case 'list_repositories':
         return Promise.resolve(repositories);
+      case 'list_directory_rules':
+        return Promise.resolve([]);
       case 'register_repository':
         return Promise.resolve(repository);
       case 'assign_repository_profile':
@@ -139,6 +141,27 @@ function mockInitialState(
         return Promise.resolve({ ...repository, profileId: profile.id });
       case 'create_profile':
         return Promise.resolve(profile);
+      case 'preview_directory_rule':
+        return Promise.resolve({
+          ruleId: null,
+          directory: '/selected/work',
+          profile,
+          operation: 'add',
+          condition: 'gitdir:/selected/work/',
+          identityFilePath: '/app/identities/profile.gitconfig',
+          globalConfigPath: '/home/octo/.gitconfig',
+          backupRequired: true,
+          conflicts: [],
+          canApply: true,
+        });
+      case 'apply_directory_rule':
+        return Promise.resolve({
+          id: 'rule-id',
+          directory: '/selected/work',
+          profileId: profile.id,
+          state: 'active',
+          message: null,
+        });
       default:
         return Promise.reject(new Error(`Unexpected command: ${command}`));
     }
@@ -161,7 +184,7 @@ describe('profiles page flow', () => {
     expect(await screen.findByRole('heading', { name: 'Reusable identities' })).toBeInTheDocument();
     expect(await screen.findByRole('heading', { name: 'Personal' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Repositories' })).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'Rules' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Rules' })).toBeEnabled();
     expect(invokeMock).toHaveBeenCalledWith('list_profiles');
   });
 
@@ -225,6 +248,33 @@ describe('profiles page flow', () => {
       expect(invokeMock).toHaveBeenCalledWith('apply_repository_profile', { id: repository.id });
     });
     expect(await screen.findByRole('status')).toHaveTextContent('Verified Personal');
+  });
+
+  it('previews and applies a directory rule through narrow commands', async () => {
+    const user = userEvent.setup();
+    mockInitialState([profile]);
+    openMock.mockResolvedValue('/selected/work');
+    render(Page);
+
+    await user.click(screen.getByRole('button', { name: 'Rules' }));
+    expect(
+      await screen.findByRole('heading', { name: 'Directory identity rules' }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Choose directory…' }));
+    await user.selectOptions(screen.getByLabelText('Profile for directory rule'), profile.id);
+    await user.click(screen.getByRole('button', { name: 'Preview' }));
+
+    expect(await screen.findByRole('dialog', { name: 'Add directory rule' })).toBeInTheDocument();
+    expect(invokeMock).toHaveBeenCalledWith('preview_directory_rule', {
+      input: { id: null, directory: '/selected/work', profileId: profile.id },
+    });
+    await user.click(screen.getByRole('button', { name: 'Apply rule' }));
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('apply_directory_rule', {
+        input: { id: null, directory: '/selected/work', profileId: profile.id },
+      });
+    });
+    expect(await screen.findByText('/selected/work/**')).toBeInTheDocument();
   });
 
   it('creates a profile through the typed command and updates the visible collection', async () => {

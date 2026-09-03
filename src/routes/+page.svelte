@@ -1,10 +1,16 @@
 <script lang="ts">
   import { onMount } from 'svelte';
 
+  import DirectoryRulesPanel from '$lib/components/DirectoryRulesPanel.svelte';
   import EnvironmentStatusPanel from '$lib/components/EnvironmentStatusPanel.svelte';
   import GithubAccountsPanel from '$lib/components/GithubAccountsPanel.svelte';
   import ProfilesPanel from '$lib/components/ProfilesPanel.svelte';
   import RepositoriesPanel from '$lib/components/RepositoriesPanel.svelte';
+  import type {
+    DirectoryRule,
+    DirectoryRuleInput,
+    DirectoryRulePreview,
+  } from '$lib/domain/directoryRules';
   import type { EnvironmentStatus } from '$lib/domain/environment';
   import {
     githubAccountKey,
@@ -15,6 +21,14 @@
   import { navigationItems, type NavigationSection } from '$lib/domain/navigation';
   import type { GitProfile, ProfileInput } from '$lib/domain/profiles';
   import type { RegisteredRepository, RepositoryProfilePreview } from '$lib/domain/repositories';
+  import {
+    applyDirectoryRule,
+    directoryRuleErrorMessage,
+    listDirectoryRules,
+    previewDirectoryRule,
+    previewRemoveDirectoryRule,
+    removeDirectoryRule,
+  } from '$lib/ipc/directoryRules';
   import { environmentErrorMessage, getEnvironmentStatus } from '$lib/ipc/environment';
   import {
     githubCliUpdateRecommended,
@@ -47,7 +61,10 @@
   } from '$lib/ipc/repositories';
   import { selectRepositoryDirectory } from '$lib/native/directoryPicker';
 
-  type ImplementedSection = Extract<NavigationSection, 'overview' | 'profiles' | 'repositories'>;
+  type ImplementedSection = Extract<
+    NavigationSection,
+    'overview' | 'profiles' | 'repositories' | 'rules'
+  >;
 
   let activeSection = $state<ImplementedSection>('overview');
   let status = $state<EnvironmentStatus | null>(null);
@@ -81,6 +98,12 @@
   let previewingRepositoryId = $state<string | null>(null);
   let applyingRepositoryId = $state<string | null>(null);
   let repositoryProfilePreview = $state<RepositoryProfilePreview | null>(null);
+  let directoryRules = $state<DirectoryRule[]>([]);
+  let directoryRulesLoading = $state(true);
+  let directoryRulesError = $state<string | null>(null);
+  let directoryRulesSuccess = $state<string | null>(null);
+  let directoryRulePending = $state(false);
+  let directoryRulePreview = $state<DirectoryRulePreview | null>(null);
 
   const LOGIN_POLL_INTERVAL_MS = 3_000;
   const LOGIN_POLL_ATTEMPTS = 40;
@@ -90,7 +113,12 @@
   }
 
   function isImplementedSection(section: NavigationSection): section is ImplementedSection {
-    return section === 'overview' || section === 'profiles' || section === 'repositories';
+    return (
+      section === 'overview' ||
+      section === 'profiles' ||
+      section === 'repositories' ||
+      section === 'rules'
+    );
   }
 
   function selectSection(section: NavigationSection): void {
@@ -160,6 +188,90 @@
       repositoriesError = repositoryErrorMessage(error);
     } finally {
       repositoriesLoading = false;
+    }
+  }
+
+  async function refreshDirectoryRules(): Promise<void> {
+    directoryRulesLoading = true;
+    directoryRulesError = null;
+
+    try {
+      directoryRules = await listDirectoryRules();
+    } catch (error) {
+      directoryRulesError = directoryRuleErrorMessage(error);
+    } finally {
+      directoryRulesLoading = false;
+    }
+  }
+
+  async function chooseRuleDirectory(): Promise<string | null> {
+    directoryRulesError = null;
+    try {
+      return await selectRepositoryDirectory();
+    } catch (error) {
+      directoryRulesError = directoryRuleErrorMessage(error);
+      return null;
+    }
+  }
+
+  async function previewRule(input: DirectoryRuleInput): Promise<void> {
+    directoryRulePending = true;
+    directoryRulesError = null;
+    directoryRulesSuccess = null;
+    try {
+      directoryRulePreview = await previewDirectoryRule(input);
+    } catch (error) {
+      directoryRulesError = directoryRuleErrorMessage(error);
+    } finally {
+      directoryRulePending = false;
+    }
+  }
+
+  async function previewRuleRemoval(id: string): Promise<void> {
+    directoryRulePending = true;
+    directoryRulesError = null;
+    directoryRulesSuccess = null;
+    try {
+      directoryRulePreview = await previewRemoveDirectoryRule(id);
+    } catch (error) {
+      directoryRulesError = directoryRuleErrorMessage(error);
+    } finally {
+      directoryRulePending = false;
+    }
+  }
+
+  function cancelRulePreview(): void {
+    if (!directoryRulePending) directoryRulePreview = null;
+  }
+
+  async function applyRulePreview(): Promise<void> {
+    const preview = directoryRulePreview;
+    if (!preview || !preview.canApply) return;
+    directoryRulePending = true;
+    directoryRulesError = null;
+    directoryRulesSuccess = null;
+    try {
+      if (preview.operation === 'remove' && preview.ruleId) {
+        await removeDirectoryRule(preview.ruleId);
+        directoryRules = directoryRules.filter((rule) => rule.id !== preview.ruleId);
+        directoryRulesSuccess = 'Directory rule removed and Git configuration verified.';
+      } else if (preview.profile) {
+        const updated = await applyDirectoryRule({
+          id: preview.ruleId,
+          directory: preview.directory,
+          profileId: preview.profile.id,
+        });
+        directoryRules = [...directoryRules.filter((rule) => rule.id !== updated.id), updated];
+        directoryRulesSuccess = 'Directory rule applied and Git configuration verified.';
+      }
+      directoryRulePreview = null;
+      await refreshRepositories();
+    } catch (error) {
+      const message = directoryRuleErrorMessage(error);
+      await refreshDirectoryRules();
+      directoryRulesError = message;
+    } finally {
+      directoryRulePending = false;
     }
   }
 
@@ -461,6 +573,7 @@
     void refreshGithubAccounts();
     void refreshProfiles();
     void refreshRepositories();
+    void refreshDirectoryRules();
   });
 </script>
 
@@ -470,7 +583,9 @@
       ? 'Profiles'
       : activeSection === 'repositories'
         ? 'Repositories'
-        : 'Overview'} · Git Identity Manager</title
+        : activeSection === 'rules'
+          ? 'Rules'
+          : 'Overview'} · Git Identity Manager</title
   >
 </svelte:head>
 
@@ -561,7 +676,7 @@
               onDelete={removeProfile}
             />
           </div>
-        {:else}
+        {:else if activeSection === 'repositories'}
           <p class="text-sm font-medium text-sky-300">Repositories</p>
           <h2 class="mt-3 text-4xl font-semibold tracking-tight text-white">
             Repository identities
@@ -596,6 +711,33 @@
               onPreviewProfile={previewRegisteredRepositoryProfile}
               onCancelPreview={cancelRepositoryProfilePreview}
               onApplyProfile={applyRegisteredRepositoryProfile}
+            />
+          </div>
+        {:else}
+          <p class="text-sm font-medium text-sky-300">Rules</p>
+          <h2 class="mt-3 text-4xl font-semibold tracking-tight text-white">
+            Directory identity rules
+          </h2>
+          <p class="mt-4 max-w-2xl text-base leading-7 text-stone-300">
+            Automatically resolve a profile for repositories below a directory through safe,
+            previewed Git conditional includes.
+          </p>
+
+          <div class="mt-10">
+            <DirectoryRulesPanel
+              rules={directoryRules}
+              {profiles}
+              loading={directoryRulesLoading}
+              error={directoryRulesError}
+              success={directoryRulesSuccess}
+              pending={directoryRulePending}
+              preview={directoryRulePreview}
+              onRefresh={refreshDirectoryRules}
+              onChooseDirectory={chooseRuleDirectory}
+              onPreview={previewRule}
+              onPreviewRemove={previewRuleRemoval}
+              onCancelPreview={cancelRulePreview}
+              onApply={applyRulePreview}
             />
           </div>
         {/if}

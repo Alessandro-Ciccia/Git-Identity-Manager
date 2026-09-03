@@ -12,17 +12,41 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let app_data_directory = app.path().app_data_dir().ok();
+            let app_config_directory = app.path().app_config_dir().ok();
+            let home_directory = app.path().home_dir().ok();
             app.manage(commands::profiles::ProfilesState::new(
                 app_data_directory
                     .as_ref()
                     .map(|directory| directory.join("profiles.v1.json")),
             ));
             app.manage(commands::repositories::RepositoriesState::new(
-                app_data_directory.map(|directory| directory.join("repositories.v1.json")),
+                app_data_directory
+                    .as_ref()
+                    .map(|directory| directory.join("repositories.v1.json")),
+            ));
+            app.manage(commands::directory_rules::DirectoryRulesState::new(
+                app_data_directory.map(|directory| directory.join("directory-rules.v1.json")),
+                app_config_directory
+                    .as_ref()
+                    .map(|directory| directory.join("git").join("identities")),
+                app_config_directory.map(|directory| directory.join("git").join("backups")),
+                home_directory
+                    .map(|directory| {
+                        vec![
+                            directory.join(".gitconfig"),
+                            directory.join(".config").join("git").join("config"),
+                        ]
+                    })
+                    .unwrap_or_default(),
             ));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::directory_rules::list_directory_rules,
+            commands::directory_rules::preview_directory_rule,
+            commands::directory_rules::apply_directory_rule,
+            commands::directory_rules::preview_remove_directory_rule,
+            commands::directory_rules::remove_directory_rule,
             commands::environment::get_environment_status,
             commands::github::open_github_login_page,
             commands::github::open_github_account_page,
