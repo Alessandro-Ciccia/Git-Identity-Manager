@@ -1,6 +1,9 @@
 use serde::Serialize;
 
-use crate::services::{github_cli::GithubCliError, profiles::ProfileError};
+use crate::services::{
+    git::GitInspectionError, github_cli::GithubCliError, profiles::ProfileError,
+    repositories::RepositoryError,
+};
 
 #[derive(Debug, Serialize)]
 #[serde(tag = "code", rename_all = "camelCase")]
@@ -30,6 +33,19 @@ pub(crate) enum AppError {
     InvalidProfileGithubAccount { message: &'static str },
     ProfileNotFound { message: &'static str },
     ProfileOperationFailed { message: &'static str },
+    RepositoryStorageUnavailable { message: &'static str },
+    RepositoryStorageFailed { message: &'static str },
+    RepositoryDataMalformed { message: &'static str },
+    InvalidRepositoryId { message: &'static str },
+    InvalidRepositoryPath { message: &'static str },
+    RepositoryPathMissing { message: &'static str },
+    InvalidRepository { message: &'static str },
+    GitMissing { message: &'static str },
+    GitCommandFailed { message: &'static str },
+    GitOutputMalformed { message: &'static str },
+    RepositoryNotFound { message: &'static str },
+    RepositoryRevealFailed { message: &'static str },
+    RepositoryOperationFailed { message: &'static str },
 }
 
 impl AppError {
@@ -66,6 +82,81 @@ impl AppError {
     pub(crate) fn profile_operation_failed() -> Self {
         Self::ProfileOperationFailed {
             message: "The profile operation could not be completed. Please try again.",
+        }
+    }
+
+    pub(crate) fn repository_operation_failed() -> Self {
+        Self::RepositoryOperationFailed {
+            message: "The repository operation could not be completed. Please try again.",
+        }
+    }
+
+    pub(crate) fn repository_path_missing() -> Self {
+        Self::RepositoryPathMissing {
+            message: "This repository folder is missing or has moved.",
+        }
+    }
+
+    pub(crate) fn repository_reveal_failed() -> Self {
+        Self::RepositoryRevealFailed {
+            message: "The repository folder could not be opened.",
+        }
+    }
+}
+
+impl From<GitInspectionError> for AppError {
+    fn from(error: GitInspectionError) -> Self {
+        match error {
+            GitInspectionError::InvalidPath | GitInspectionError::NotDirectory => {
+                Self::InvalidRepositoryPath {
+                    message: "Select a valid repository folder.",
+                }
+            }
+            GitInspectionError::PathNotFound => Self::RepositoryPathMissing {
+                message: "The selected folder does not exist or is unavailable.",
+            },
+            GitInspectionError::NotRepository => Self::InvalidRepository {
+                message: "The selected folder is not inside a Git working repository.",
+            },
+            GitInspectionError::GitMissing => Self::GitMissing {
+                message: "Git is not installed or is not available on PATH.",
+            },
+            GitInspectionError::CommandFailed => Self::GitCommandFailed {
+                message: "Git could not inspect this repository. Check access and try again.",
+            },
+            GitInspectionError::MalformedOutput => Self::GitOutputMalformed {
+                message: "Git returned repository information that could not be read safely.",
+            },
+        }
+    }
+}
+
+impl From<RepositoryError> for AppError {
+    fn from(error: RepositoryError) -> Self {
+        match error {
+            RepositoryError::StorageUnavailable => Self::RepositoryStorageUnavailable {
+                message: "Local repository storage is not available on this system.",
+            },
+            RepositoryError::StorageReadFailed | RepositoryError::StorageWriteFailed => {
+                Self::RepositoryStorageFailed {
+                    message: "Repositories could not be read or saved. Check application data permissions and try again.",
+                }
+            }
+            RepositoryError::MalformedData => Self::RepositoryDataMalformed {
+                message: "Stored repository data could not be read safely.",
+            },
+            RepositoryError::InvalidId => Self::InvalidRepositoryId {
+                message: "The repository identifier is invalid.",
+            },
+            RepositoryError::InvalidPath => Self::InvalidRepositoryPath {
+                message: "The repository path is invalid.",
+            },
+            RepositoryError::NotFound => Self::RepositoryNotFound {
+                message: "That repository is no longer registered. Refresh and try again.",
+            },
+            RepositoryError::ClockUnavailable => Self::RepositoryStorageFailed {
+                message: "The repository could not be saved because the system time is unavailable.",
+            },
         }
     }
 }

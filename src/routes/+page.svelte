@@ -4,6 +4,7 @@
   import EnvironmentStatusPanel from '$lib/components/EnvironmentStatusPanel.svelte';
   import GithubAccountsPanel from '$lib/components/GithubAccountsPanel.svelte';
   import ProfilesPanel from '$lib/components/ProfilesPanel.svelte';
+  import RepositoriesPanel from '$lib/components/RepositoriesPanel.svelte';
   import type { EnvironmentStatus } from '$lib/domain/environment';
   import {
     githubAccountKey,
@@ -13,6 +14,7 @@
   } from '$lib/domain/github';
   import { navigationItems, type NavigationSection } from '$lib/domain/navigation';
   import type { GitProfile, ProfileInput } from '$lib/domain/profiles';
+  import type { RegisteredRepository } from '$lib/domain/repositories';
   import { environmentErrorMessage, getEnvironmentStatus } from '$lib/ipc/environment';
   import {
     githubCliUpdateRecommended,
@@ -31,8 +33,17 @@
     profileErrorMessage,
     updateProfile,
   } from '$lib/ipc/profiles';
+  import {
+    listRepositories,
+    refreshRepository,
+    registerRepository,
+    removeRepository,
+    repositoryErrorMessage,
+    revealRepository,
+  } from '$lib/ipc/repositories';
+  import { selectRepositoryDirectory } from '$lib/native/directoryPicker';
 
-  type ImplementedSection = Extract<NavigationSection, 'overview' | 'profiles'>;
+  type ImplementedSection = Extract<NavigationSection, 'overview' | 'profiles' | 'repositories'>;
 
   let activeSection = $state<ImplementedSection>('overview');
   let status = $state<EnvironmentStatus | null>(null);
@@ -54,6 +65,13 @@
   let profilesError = $state<string | null>(null);
   let savingProfileId = $state<string | null>(null);
   let deletingProfileId = $state<string | null>(null);
+  let repositories = $state<RegisteredRepository[]>([]);
+  let repositoriesLoading = $state(true);
+  let repositoriesError = $state<string | null>(null);
+  let addingRepository = $state(false);
+  let refreshingRepositoryId = $state<string | null>(null);
+  let removingRepositoryId = $state<string | null>(null);
+  let revealingRepositoryId = $state<string | null>(null);
 
   const LOGIN_POLL_INTERVAL_MS = 3_000;
   const LOGIN_POLL_ATTEMPTS = 40;
@@ -63,7 +81,7 @@
   }
 
   function isImplementedSection(section: NavigationSection): section is ImplementedSection {
-    return section === 'overview' || section === 'profiles';
+    return section === 'overview' || section === 'profiles' || section === 'repositories';
   }
 
   function selectSection(section: NavigationSection): void {
@@ -120,6 +138,85 @@
       profilesError = profileErrorMessage(error);
     } finally {
       profilesLoading = false;
+    }
+  }
+
+  async function refreshRepositories(): Promise<void> {
+    repositoriesLoading = true;
+    repositoriesError = null;
+
+    try {
+      repositories = await listRepositories();
+    } catch (error) {
+      repositoriesError = repositoryErrorMessage(error);
+    } finally {
+      repositoriesLoading = false;
+    }
+  }
+
+  async function addRepository(): Promise<void> {
+    addingRepository = true;
+    repositoriesError = null;
+
+    try {
+      const path = await selectRepositoryDirectory();
+      if (!path) {
+        return;
+      }
+      const repository = await registerRepository(path);
+      repositories = [
+        ...repositories.filter((existing) => existing.id !== repository.id),
+        repository,
+      ];
+    } catch (error) {
+      repositoriesError = repositoryErrorMessage(error);
+    } finally {
+      addingRepository = false;
+    }
+  }
+
+  async function refreshRegisteredRepository(id: string): Promise<void> {
+    refreshingRepositoryId = id;
+    repositoriesError = null;
+
+    try {
+      const refreshed = await refreshRepository(id);
+      repositories = repositories.map((repository) =>
+        repository.id === id ? refreshed : repository,
+      );
+    } catch (error) {
+      repositoriesError = repositoryErrorMessage(error);
+    } finally {
+      refreshingRepositoryId = null;
+    }
+  }
+
+  async function removeRegisteredRepository(id: string): Promise<boolean> {
+    removingRepositoryId = id;
+    repositoriesError = null;
+
+    try {
+      await removeRepository(id);
+      repositories = repositories.filter((repository) => repository.id !== id);
+      return true;
+    } catch (error) {
+      repositoriesError = repositoryErrorMessage(error);
+      return false;
+    } finally {
+      removingRepositoryId = null;
+    }
+  }
+
+  async function revealRegisteredRepository(id: string): Promise<void> {
+    revealingRepositoryId = id;
+    repositoriesError = null;
+
+    try {
+      await revealRepository(id);
+    } catch (error) {
+      repositoriesError = repositoryErrorMessage(error);
+    } finally {
+      revealingRepositoryId = null;
     }
   }
 
@@ -279,11 +376,18 @@
     void refreshEnvironment();
     void refreshGithubAccounts();
     void refreshProfiles();
+    void refreshRepositories();
   });
 </script>
 
 <svelte:head>
-  <title>{activeSection === 'profiles' ? 'Profiles' : 'Overview'} · Git Identity Manager</title>
+  <title
+    >{activeSection === 'profiles'
+      ? 'Profiles'
+      : activeSection === 'repositories'
+        ? 'Repositories'
+        : 'Overview'} · Git Identity Manager</title
+  >
 </svelte:head>
 
 <main class="min-h-screen bg-stone-950 text-stone-100">
@@ -351,7 +455,7 @@
               onRefresh={refreshEnvironment}
             />
           </div>
-        {:else}
+        {:else if activeSection === 'profiles'}
           <p class="text-sm font-medium text-sky-300">Profiles</p>
           <h2 class="mt-3 text-4xl font-semibold tracking-tight text-white">Reusable identities</h2>
           <p class="mt-4 max-w-2xl text-base leading-7 text-stone-300">
@@ -371,6 +475,32 @@
               onCreate={addProfile}
               onUpdate={saveProfile}
               onDelete={removeProfile}
+            />
+          </div>
+        {:else}
+          <p class="text-sm font-medium text-sky-300">Repositories</p>
+          <h2 class="mt-3 text-4xl font-semibold tracking-tight text-white">
+            Repository identities
+          </h2>
+          <p class="mt-4 max-w-2xl text-base leading-7 text-stone-300">
+            Inspect each repository’s effective Git identity, configuration source, and remotes
+            without changing local or global Git configuration.
+          </p>
+
+          <div class="mt-10">
+            <RepositoriesPanel
+              {repositories}
+              loading={repositoriesLoading}
+              error={repositoriesError}
+              adding={addingRepository}
+              refreshingId={refreshingRepositoryId}
+              removingId={removingRepositoryId}
+              revealingId={revealingRepositoryId}
+              onAdd={addRepository}
+              onRefreshAll={refreshRepositories}
+              onRefresh={refreshRegisteredRepository}
+              onRemove={removeRegisteredRepository}
+              onReveal={revealRegisteredRepository}
             />
           </div>
         {/if}

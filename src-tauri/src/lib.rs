@@ -9,13 +9,17 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            let store_path = app
-                .path()
-                .app_data_dir()
-                .ok()
-                .map(|directory| directory.join("profiles.v1.json"));
-            app.manage(commands::profiles::ProfilesState::new(store_path));
+            let app_data_directory = app.path().app_data_dir().ok();
+            app.manage(commands::profiles::ProfilesState::new(
+                app_data_directory
+                    .as_ref()
+                    .map(|directory| directory.join("profiles.v1.json")),
+            ));
+            app.manage(commands::repositories::RepositoriesState::new(
+                app_data_directory.map(|directory| directory.join("repositories.v1.json")),
+            ));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -30,6 +34,11 @@ pub fn run() {
             commands::profiles::create_profile,
             commands::profiles::update_profile,
             commands::profiles::delete_profile,
+            commands::repositories::list_repositories,
+            commands::repositories::register_repository,
+            commands::repositories::refresh_repository,
+            commands::repositories::remove_repository,
+            commands::repositories::reveal_repository,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
