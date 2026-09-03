@@ -68,7 +68,10 @@
 
   <div aria-live="polite">
     {#if error}
-      <div class="border-b border-rose-400/20 bg-rose-400/5 px-6 py-4 text-sm text-rose-200" role="alert">
+      <div
+        class="border-b border-rose-400/20 bg-rose-400/5 px-6 py-4 text-sm text-rose-200"
+        role="alert"
+      >
         {error}
       </div>
     {/if}

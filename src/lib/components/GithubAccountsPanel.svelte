@@ -70,7 +70,9 @@
   aria-labelledby="github-accounts-heading"
   aria-busy={operationPending}
 >
-  <header class="flex flex-wrap items-start justify-between gap-5 border-b border-white/10 px-6 py-5">
+  <header
+    class="flex flex-wrap items-start justify-between gap-5 border-b border-white/10 px-6 py-5"
+  >
     <div>
       <p class="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">GitHub CLI</p>
       <h3 id="github-accounts-heading" class="mt-2 text-lg font-semibold text-white">
@@ -145,7 +147,10 @@
         {#each groups as group (group.hostname)}
           <section aria-labelledby={`host-${group.hostname}`}>
             <div class="bg-black/10 px-6 py-3">
-              <h4 id={`host-${group.hostname}`} class="font-mono text-xs font-medium text-stone-400">
+              <h4
+                id={`host-${group.hostname}`}
+                class="font-mono text-xs font-medium text-stone-400"
+              >
                 {group.hostname}
               </h4>
             </div>
@@ -203,7 +208,9 @@
                         disabled={operationPending}
                         aria-label={`Switch to @${account.username} on ${account.hostname}`}
                       >
-                        {switchingAccountKey === githubAccountKey(account) ? 'Switching…' : 'Switch'}
+                        {switchingAccountKey === githubAccountKey(account)
+                          ? 'Switching…'
+                          : 'Switch'}
                       </button>
                     {/if}
                   </div>

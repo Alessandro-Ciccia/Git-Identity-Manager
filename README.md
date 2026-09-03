@@ -2,7 +2,7 @@
 
 Git Identity Manager is a local-first desktop utility for managing multiple Git and GitHub identities on one computer.
 
-Milestone 2 adds structured GitHub CLI account discovery, active-account switching with read-back verification, refresh, and the official browser login flow. Credentials remain managed by GitHub CLI and are never returned to the frontend.
+Milestone 3 adds validated local Git profiles with create, edit, delete, restart-safe persistence, profile cards, and optional GitHub account association. Profile data contains no authentication secrets, and GitHub credentials remain managed by GitHub CLI.
 
 ## Stack
 

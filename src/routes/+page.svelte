@@ -3,6 +3,7 @@
 
   import EnvironmentStatusPanel from '$lib/components/EnvironmentStatusPanel.svelte';
   import GithubAccountsPanel from '$lib/components/GithubAccountsPanel.svelte';
+  import ProfilesPanel from '$lib/components/ProfilesPanel.svelte';
   import type { EnvironmentStatus } from '$lib/domain/environment';
   import {
     githubAccountKey,
@@ -10,7 +11,8 @@
     type GithubAccount,
     type GithubAccountsStatus,
   } from '$lib/domain/github';
-  import { navigationItems } from '$lib/domain/navigation';
+  import { navigationItems, type NavigationSection } from '$lib/domain/navigation';
+  import type { GitProfile, ProfileInput } from '$lib/domain/profiles';
   import { environmentErrorMessage, getEnvironmentStatus } from '$lib/ipc/environment';
   import {
     githubCliUpdateRecommended,
@@ -22,7 +24,17 @@
     openGithubLoginPage,
     switchGithubAccount,
   } from '$lib/ipc/github';
+  import {
+    createProfile,
+    deleteProfile,
+    listProfiles,
+    profileErrorMessage,
+    updateProfile,
+  } from '$lib/ipc/profiles';
 
+  type ImplementedSection = Extract<NavigationSection, 'overview' | 'profiles'>;
+
+  let activeSection = $state<ImplementedSection>('overview');
   let status = $state<EnvironmentStatus | null>(null);
   let isLoading = $state(true);
   let loadError = $state<string | null>(null);
@@ -37,12 +49,27 @@
   let loginBaseline = $state<GithubAccountsStatus | null>(null);
   let loginPollGeneration = 0;
   let updateLoading = $state(false);
+  let profiles = $state<GitProfile[]>([]);
+  let profilesLoading = $state(true);
+  let profilesError = $state<string | null>(null);
+  let savingProfileId = $state<string | null>(null);
+  let deletingProfileId = $state<string | null>(null);
 
   const LOGIN_POLL_INTERVAL_MS = 3_000;
   const LOGIN_POLL_ATTEMPTS = 40;
 
   function wait(milliseconds: number): Promise<void> {
     return new Promise((resolve) => globalThis.setTimeout(resolve, milliseconds));
+  }
+
+  function isImplementedSection(section: NavigationSection): section is ImplementedSection {
+    return section === 'overview' || section === 'profiles';
+  }
+
+  function selectSection(section: NavigationSection): void {
+    if (isImplementedSection(section)) {
+      activeSection = section;
+    }
   }
 
   function finishLoginTracking(): void {
@@ -72,11 +99,7 @@
     try {
       const refreshedStatus = await listGithubAccounts();
       githubStatus = refreshedStatus;
-      if (
-        loginInProgress &&
-        loginBaseline &&
-        hasNewGithubAccount(loginBaseline, refreshedStatus)
-      ) {
+      if (loginInProgress && loginBaseline && hasNewGithubAccount(loginBaseline, refreshedStatus)) {
         finishLoginTracking();
       }
     } catch (error) {
@@ -84,6 +107,67 @@
       showGithubUpdateAction = githubCliUpdateRecommended(error);
     } finally {
       githubLoading = false;
+    }
+  }
+
+  async function refreshProfiles(): Promise<void> {
+    profilesLoading = true;
+    profilesError = null;
+
+    try {
+      profiles = await listProfiles();
+    } catch (error) {
+      profilesError = profileErrorMessage(error);
+    } finally {
+      profilesLoading = false;
+    }
+  }
+
+  async function addProfile(input: ProfileInput): Promise<boolean> {
+    savingProfileId = 'new';
+    profilesError = null;
+
+    try {
+      const created = await createProfile(input);
+      profiles = [...profiles, created];
+      return true;
+    } catch (error) {
+      profilesError = profileErrorMessage(error);
+      return false;
+    } finally {
+      savingProfileId = null;
+    }
+  }
+
+  async function saveProfile(id: string, input: ProfileInput): Promise<boolean> {
+    savingProfileId = id;
+    profilesError = null;
+
+    try {
+      const updated = await updateProfile(id, input);
+      profiles = profiles.map((profile) => (profile.id === id ? updated : profile));
+      return true;
+    } catch (error) {
+      profilesError = profileErrorMessage(error);
+      return false;
+    } finally {
+      savingProfileId = null;
+    }
+  }
+
+  async function removeProfile(id: string): Promise<boolean> {
+    deletingProfileId = id;
+    profilesError = null;
+
+    try {
+      await deleteProfile(id);
+      profiles = profiles.filter((profile) => profile.id !== id);
+      return true;
+    } catch (error) {
+      profilesError = profileErrorMessage(error);
+      return false;
+    } finally {
+      deletingProfileId = null;
     }
   }
 
@@ -194,11 +278,12 @@
   onMount(() => {
     void refreshEnvironment();
     void refreshGithubAccounts();
+    void refreshProfiles();
   });
 </script>
 
 <svelte:head>
-  <title>Overview · Git Identity Manager</title>
+  <title>{activeSection === 'profiles' ? 'Profiles' : 'Overview'} · Git Identity Manager</title>
 </svelte:head>
 
 <main class="min-h-screen bg-stone-950 text-stone-100">
@@ -211,54 +296,84 @@
 
       <nav aria-label="Primary navigation" class="space-y-1">
         {#each navigationItems as item (item.id)}
-          <a
-            class={`block rounded-lg px-3 py-2 text-sm transition hover:bg-white/5 hover:text-white ${
-              item.id === 'overview' ? 'bg-white/10 text-white' : 'text-stone-300'
+          <button
+            type="button"
+            class={`block w-full rounded-lg px-3 py-2 text-left text-sm transition ${
+              activeSection === item.id
+                ? 'bg-white/10 text-white'
+                : isImplementedSection(item.id)
+                  ? 'text-stone-300 hover:bg-white/5 hover:text-white'
+                  : 'cursor-not-allowed text-stone-600'
             }`}
-            href={`#${item.id}`}
-            aria-current={item.id === 'overview' ? 'page' : undefined}
+            onclick={() => selectSection(item.id)}
+            disabled={!isImplementedSection(item.id)}
+            aria-current={activeSection === item.id ? 'page' : undefined}
           >
             {item.label}
-          </a>
+          </button>
         {/each}
       </nav>
     </aside>
 
     <section class="px-10 py-12">
       <div class="max-w-4xl">
-        <p class="text-sm font-medium text-sky-300">Overview</p>
-        <h2 class="mt-3 text-4xl font-semibold tracking-tight text-white">Identity overview</h2>
-        <p class="mt-4 max-w-2xl text-base leading-7 text-stone-300">
-          See the GitHub accounts already managed by GitHub CLI and switch the active account
-          without exposing credentials to the interface.
-        </p>
+        {#if activeSection === 'overview'}
+          <p class="text-sm font-medium text-sky-300">Overview</p>
+          <h2 class="mt-3 text-4xl font-semibold tracking-tight text-white">Identity overview</h2>
+          <p class="mt-4 max-w-2xl text-base leading-7 text-stone-300">
+            See the GitHub accounts already managed by GitHub CLI and switch the active account
+            without exposing credentials to the interface.
+          </p>
 
-        <div class="mt-10 space-y-6">
-          <GithubAccountsPanel
-            status={githubStatus}
-            loading={githubLoading}
-            error={githubError}
-            {switchingAccountKey}
-            {viewingAccountKey}
-            {loginLoading}
-            {loginInProgress}
-            showUpdateAction={showGithubUpdateAction}
-            {updateLoading}
-            onRefresh={refreshGithubAccounts}
-            onSwitch={activateGithubAccount}
-            onView={viewGithubAccount}
-            onLogin={addGithubAccount}
-            onOpenLoginPage={openGithubLoginBrowser}
-            onUpdate={openGithubCliUpdate}
-          />
+          <div class="mt-10 space-y-6">
+            <GithubAccountsPanel
+              status={githubStatus}
+              loading={githubLoading}
+              error={githubError}
+              {switchingAccountKey}
+              {viewingAccountKey}
+              {loginLoading}
+              {loginInProgress}
+              showUpdateAction={showGithubUpdateAction}
+              {updateLoading}
+              onRefresh={refreshGithubAccounts}
+              onSwitch={activateGithubAccount}
+              onView={viewGithubAccount}
+              onLogin={addGithubAccount}
+              onOpenLoginPage={openGithubLoginBrowser}
+              onUpdate={openGithubCliUpdate}
+            />
 
-          <EnvironmentStatusPanel
-            {status}
-            loading={isLoading}
-            error={loadError}
-            onRefresh={refreshEnvironment}
-          />
-        </div>
+            <EnvironmentStatusPanel
+              {status}
+              loading={isLoading}
+              error={loadError}
+              onRefresh={refreshEnvironment}
+            />
+          </div>
+        {:else}
+          <p class="text-sm font-medium text-sky-300">Profiles</p>
+          <h2 class="mt-3 text-4xl font-semibold tracking-tight text-white">Reusable identities</h2>
+          <p class="mt-4 max-w-2xl text-base leading-7 text-stone-300">
+            Keep Git names and emails consistent, and optionally connect each profile to an account
+            already managed by GitHub CLI.
+          </p>
+
+          <div class="mt-10">
+            <ProfilesPanel
+              {profiles}
+              accounts={githubStatus?.accounts ?? []}
+              loading={profilesLoading}
+              error={profilesError}
+              {savingProfileId}
+              {deletingProfileId}
+              onRefresh={refreshProfiles}
+              onCreate={addProfile}
+              onUpdate={saveProfile}
+              onDelete={removeProfile}
+            />
+          </div>
+        {/if}
       </div>
     </section>
   </div>

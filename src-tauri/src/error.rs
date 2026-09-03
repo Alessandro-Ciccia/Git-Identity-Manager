@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::services::github_cli::GithubCliError;
+use crate::services::{github_cli::GithubCliError, profiles::ProfileError};
 
 #[derive(Debug, Serialize)]
 #[serde(tag = "code", rename_all = "camelCase")]
@@ -20,6 +20,16 @@ pub(crate) enum AppError {
     GithubLoginPageOpenFailed { message: &'static str },
     GithubAccountPageOpenFailed { message: &'static str },
     ExternalPageOpenFailed { message: &'static str },
+    ProfileStorageUnavailable { message: &'static str },
+    ProfileStorageFailed { message: &'static str },
+    ProfileDataMalformed { message: &'static str },
+    InvalidProfileId { message: &'static str },
+    InvalidProfileLabel { message: &'static str },
+    InvalidGitName { message: &'static str },
+    InvalidGitEmail { message: &'static str },
+    InvalidProfileGithubAccount { message: &'static str },
+    ProfileNotFound { message: &'static str },
+    ProfileOperationFailed { message: &'static str },
 }
 
 impl AppError {
@@ -50,6 +60,48 @@ impl AppError {
     pub(crate) fn external_page_open_failed() -> Self {
         Self::ExternalPageOpenFailed {
             message: "The GitHub CLI installation page could not be opened. Please try again.",
+        }
+    }
+
+    pub(crate) fn profile_operation_failed() -> Self {
+        Self::ProfileOperationFailed {
+            message: "The profile operation could not be completed. Please try again.",
+        }
+    }
+}
+
+impl From<ProfileError> for AppError {
+    fn from(error: ProfileError) -> Self {
+        match error {
+            ProfileError::StorageUnavailable => Self::ProfileStorageUnavailable {
+                message: "Local profile storage is not available on this system.",
+            },
+            ProfileError::StorageReadFailed | ProfileError::StorageWriteFailed => {
+                Self::ProfileStorageFailed {
+                    message: "Profiles could not be read or saved. Check application data permissions and try again.",
+                }
+            }
+            ProfileError::MalformedData => Self::ProfileDataMalformed {
+                message: "Stored profile data could not be read safely.",
+            },
+            ProfileError::InvalidId => Self::InvalidProfileId {
+                message: "The profile identifier is invalid.",
+            },
+            ProfileError::InvalidLabel => Self::InvalidProfileLabel {
+                message: "Enter a profile label between 1 and 80 characters.",
+            },
+            ProfileError::InvalidGitName => Self::InvalidGitName {
+                message: "Enter a Git name between 1 and 200 characters without control characters.",
+            },
+            ProfileError::InvalidGitEmail => Self::InvalidGitEmail {
+                message: "Enter a valid Git email address.",
+            },
+            ProfileError::InvalidGithubAccount => Self::InvalidProfileGithubAccount {
+                message: "The associated GitHub account is invalid.",
+            },
+            ProfileError::NotFound => Self::ProfileNotFound {
+                message: "That profile no longer exists. Refresh profiles and try again.",
+            },
         }
     }
 }
