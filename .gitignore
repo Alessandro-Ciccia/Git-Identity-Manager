@@ -11,6 +11,7 @@ src-tauri/gen
 .pnpm-store
 
 # Internal working files — not part of the public project
+.pi
 plan
 AGENTS.md
 docs/MILESTONES.md
