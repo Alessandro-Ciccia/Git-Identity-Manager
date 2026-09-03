@@ -37,6 +37,10 @@ pub fn run() {
             commands::repositories::list_repositories,
             commands::repositories::register_repository,
             commands::repositories::refresh_repository,
+            commands::repositories::assign_repository_profile,
+            commands::repositories::remove_repository_profile,
+            commands::repositories::preview_repository_profile,
+            commands::repositories::apply_repository_profile,
             commands::repositories::remove_repository,
             commands::repositories::reveal_repository,
         ])

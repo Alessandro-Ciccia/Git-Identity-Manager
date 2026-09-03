@@ -1,10 +1,14 @@
 import { invoke } from '@tauri-apps/api/core';
 
-import type { RegisteredRepository } from '$lib/domain/repositories';
+import type { RegisteredRepository, RepositoryProfilePreview } from '$lib/domain/repositories';
 
 const LIST_REPOSITORIES_COMMAND = 'list_repositories';
 const REGISTER_REPOSITORY_COMMAND = 'register_repository';
 const REFRESH_REPOSITORY_COMMAND = 'refresh_repository';
+const ASSIGN_REPOSITORY_PROFILE_COMMAND = 'assign_repository_profile';
+const REMOVE_REPOSITORY_PROFILE_COMMAND = 'remove_repository_profile';
+const PREVIEW_REPOSITORY_PROFILE_COMMAND = 'preview_repository_profile';
+const APPLY_REPOSITORY_PROFILE_COMMAND = 'apply_repository_profile';
 const REMOVE_REPOSITORY_COMMAND = 'remove_repository';
 const REVEAL_REPOSITORY_COMMAND = 'reveal_repository';
 
@@ -18,6 +22,25 @@ export function registerRepository(path: string): Promise<RegisteredRepository> 
 
 export function refreshRepository(id: string): Promise<RegisteredRepository> {
   return invoke<RegisteredRepository>(REFRESH_REPOSITORY_COMMAND, { id });
+}
+
+export function assignRepositoryProfile(
+  id: string,
+  profileId: string,
+): Promise<RegisteredRepository> {
+  return invoke<RegisteredRepository>(ASSIGN_REPOSITORY_PROFILE_COMMAND, { id, profileId });
+}
+
+export function removeRepositoryProfile(id: string): Promise<RegisteredRepository> {
+  return invoke<RegisteredRepository>(REMOVE_REPOSITORY_PROFILE_COMMAND, { id });
+}
+
+export function previewRepositoryProfile(id: string): Promise<RepositoryProfilePreview> {
+  return invoke<RepositoryProfilePreview>(PREVIEW_REPOSITORY_PROFILE_COMMAND, { id });
+}
+
+export function applyRepositoryProfile(id: string): Promise<RegisteredRepository> {
+  return invoke<RegisteredRepository>(APPLY_REPOSITORY_PROFILE_COMMAND, { id });
 }
 
 export function removeRepository(id: string): Promise<void> {

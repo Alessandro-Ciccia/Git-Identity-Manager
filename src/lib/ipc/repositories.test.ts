@@ -2,10 +2,14 @@ import { invoke } from '@tauri-apps/api/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  applyRepositoryProfile,
+  assignRepositoryProfile,
   listRepositories,
+  previewRepositoryProfile,
   refreshRepository,
   registerRepository,
   removeRepository,
+  removeRepositoryProfile,
   repositoryErrorMessage,
   revealRepository,
 } from './repositories';
@@ -23,6 +27,10 @@ describe('repositories IPC', () => {
     await listRepositories();
     await registerRepository('/work/project');
     await refreshRepository('repository-id');
+    await assignRepositoryProfile('repository-id', 'profile-id');
+    await removeRepositoryProfile('repository-id');
+    await previewRepositoryProfile('repository-id');
+    await applyRepositoryProfile('repository-id');
     await removeRepository('repository-id');
     await revealRepository('repository-id');
 
@@ -30,6 +38,10 @@ describe('repositories IPC', () => {
       ['list_repositories'],
       ['register_repository', { path: '/work/project' }],
       ['refresh_repository', { id: 'repository-id' }],
+      ['assign_repository_profile', { id: 'repository-id', profileId: 'profile-id' }],
+      ['remove_repository_profile', { id: 'repository-id' }],
+      ['preview_repository_profile', { id: 'repository-id' }],
+      ['apply_repository_profile', { id: 'repository-id' }],
       ['remove_repository', { id: 'repository-id' }],
       ['reveal_repository', { id: 'repository-id' }],
     ]);

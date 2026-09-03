@@ -19,6 +19,8 @@ pub(crate) struct RepositoryRegistration {
     pub(crate) id: String,
     pub(crate) path: String,
     pub(crate) added_at: String,
+    #[serde(default)]
+    pub(crate) profile_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -27,6 +29,7 @@ pub(crate) struct RegisteredRepository {
     pub(crate) id: String,
     pub(crate) path: String,
     pub(crate) added_at: String,
+    pub(crate) profile_id: Option<String>,
     pub(crate) state: RepositoryState,
     pub(crate) inspection: Option<RepositoryInspection>,
     pub(crate) message: Option<String>,
@@ -99,12 +102,57 @@ impl RepositoriesService {
             added_at: OffsetDateTime::now_utc()
                 .format(&Rfc3339)
                 .map_err(|_| RepositoryError::ClockUnavailable)?,
+            profile_id: None,
         };
         store.repositories.push(registration.clone());
         self.save(&store)?;
 
         self.find(&registration.id)
             .map_err(|_| RepositoryError::StorageWriteFailed)
+    }
+
+    pub(crate) fn assign_profile(
+        &self,
+        id: &str,
+        profile_id: &str,
+    ) -> Result<RepositoryRegistration, RepositoryError> {
+        validate_id(id)?;
+        validate_id(profile_id)?;
+        let mut store = self.load()?;
+        let repository = store
+            .repositories
+            .iter_mut()
+            .find(|repository| repository.id == id)
+            .ok_or(RepositoryError::NotFound)?;
+        repository.profile_id = Some(profile_id.to_owned());
+        let updated = repository.clone();
+        self.save(&store)?;
+
+        match self.find(id) {
+            Ok(saved) if saved == updated => Ok(saved),
+            _ => Err(RepositoryError::StorageWriteFailed),
+        }
+    }
+
+    pub(crate) fn remove_profile(
+        &self,
+        id: &str,
+    ) -> Result<RepositoryRegistration, RepositoryError> {
+        validate_id(id)?;
+        let mut store = self.load()?;
+        let repository = store
+            .repositories
+            .iter_mut()
+            .find(|repository| repository.id == id)
+            .ok_or(RepositoryError::NotFound)?;
+        repository.profile_id = None;
+        let updated = repository.clone();
+        self.save(&store)?;
+
+        match self.find(id) {
+            Ok(saved) if saved == updated => Ok(saved),
+            _ => Err(RepositoryError::StorageWriteFailed),
+        }
     }
 
     pub(crate) fn remove(&self, id: &str) -> Result<(), RepositoryError> {
@@ -196,6 +244,10 @@ fn validate_store(store: &RepositoriesStore) -> Result<(), RepositoryError> {
         validate_id(&repository.id).map_err(|_| RepositoryError::MalformedData)?;
         validate_path(&repository.path).map_err(|_| RepositoryError::MalformedData)?;
         if OffsetDateTime::parse(&repository.added_at, &Rfc3339).is_err()
+            || repository
+                .profile_id
+                .as_deref()
+                .is_some_and(|profile_id| validate_id(profile_id).is_err())
             || !ids.insert(repository.id.as_str())
             || !paths.insert(repository.path.as_str())
         {
@@ -302,6 +354,49 @@ mod tests {
         assert!(Uuid::parse_str(&first.id).is_ok());
         assert!(OffsetDateTime::parse(&first.added_at, &Rfc3339).is_ok());
         assert_eq!(service(&directory.0).list().unwrap(), vec![first]);
+    }
+
+    #[test]
+    fn profile_assignment_and_removal_survive_restart() {
+        let directory = TestDirectory::new();
+        let repository_path = directory.0.join("project").to_string_lossy().into_owned();
+        let registration = service(&directory.0).register(&repository_path).unwrap();
+        let profile_id = Uuid::new_v4().to_string();
+
+        let assigned = service(&directory.0)
+            .assign_profile(&registration.id, &profile_id)
+            .unwrap();
+        assert_eq!(assigned.profile_id.as_deref(), Some(profile_id.as_str()));
+        assert_eq!(
+            service(&directory.0).find(&registration.id).unwrap(),
+            assigned
+        );
+
+        let unassigned = service(&directory.0)
+            .remove_profile(&registration.id)
+            .unwrap();
+        assert_eq!(unassigned.profile_id, None);
+        assert_eq!(
+            service(&directory.0).find(&registration.id).unwrap(),
+            unassigned
+        );
+    }
+
+    #[test]
+    fn loads_milestone_four_records_without_profile_ids() {
+        let directory = TestDirectory::new();
+        let id = Uuid::new_v4();
+        fs::write(
+            directory.0.join("repositories.v1.json"),
+            format!(
+                r#"{{"version":1,"repositories":[{{"id":"{id}","path":"/work/project","addedAt":"2026-09-03T10:00:00Z"}}]}}"#
+            ),
+        )
+        .unwrap();
+
+        let repositories = service(&directory.0).list().unwrap();
+        assert_eq!(repositories.len(), 1);
+        assert_eq!(repositories[0].profile_id, None);
     }
 
     #[test]

@@ -1,8 +1,11 @@
 use serde::Serialize;
 
 use crate::services::{
-    git::GitInspectionError, github_cli::GithubCliError, profiles::ProfileError,
+    git::{GitIdentityApplyError, GitInspectionError},
+    github_cli::GithubCliError,
+    profiles::ProfileError,
     repositories::RepositoryError,
+    repository_assignment::RepositoryAssignmentError,
 };
 
 #[derive(Debug, Serialize)]
@@ -45,6 +48,11 @@ pub(crate) enum AppError {
     GitOutputMalformed { message: &'static str },
     RepositoryNotFound { message: &'static str },
     RepositoryRevealFailed { message: &'static str },
+    RepositoryProfileNotAssigned { message: &'static str },
+    RepositoryAssignmentFailed { message: &'static str },
+    GitIdentityWriteFailed { message: &'static str },
+    GitIdentityVerificationFailed { message: &'static str },
+    GitIdentityRollbackFailed { message: &'static str },
     RepositoryOperationFailed { message: &'static str },
 }
 
@@ -85,6 +93,12 @@ impl AppError {
         }
     }
 
+    pub(crate) fn repository_assignment_failed() -> Self {
+        Self::RepositoryAssignmentFailed {
+            message: "The repository profile operation could not be completed. Please try again.",
+        }
+    }
+
     pub(crate) fn repository_operation_failed() -> Self {
         Self::RepositoryOperationFailed {
             message: "The repository operation could not be completed. Please try again.",
@@ -100,6 +114,40 @@ impl AppError {
     pub(crate) fn repository_reveal_failed() -> Self {
         Self::RepositoryRevealFailed {
             message: "The repository folder could not be opened.",
+        }
+    }
+}
+
+impl From<RepositoryAssignmentError> for AppError {
+    fn from(error: RepositoryAssignmentError) -> Self {
+        match error {
+            RepositoryAssignmentError::Repository(error) => Self::from(error),
+            RepositoryAssignmentError::Profile(error) => Self::from(error),
+            RepositoryAssignmentError::GitInspection(error) => Self::from(error),
+            RepositoryAssignmentError::GitApply(error) => Self::from(error),
+            RepositoryAssignmentError::NotAssigned => Self::RepositoryProfileNotAssigned {
+                message: "Assign a profile to this repository before previewing or applying it.",
+            },
+        }
+    }
+}
+
+impl From<GitIdentityApplyError> for AppError {
+    fn from(error: GitIdentityApplyError) -> Self {
+        match error {
+            GitIdentityApplyError::Inspection(error) => Self::from(error),
+            GitIdentityApplyError::InvalidIdentity => Self::InvalidGitName {
+                message: "The assigned profile contains an invalid Git identity.",
+            },
+            GitIdentityApplyError::WriteFailed => Self::GitIdentityWriteFailed {
+                message: "Git could not update the repository-local identity. Previous local identity values were restored.",
+            },
+            GitIdentityApplyError::VerificationFailed => Self::GitIdentityVerificationFailed {
+                message: "The repository-local identity did not become effective, so the previous local identity values were restored.",
+            },
+            GitIdentityApplyError::RollbackFailed => Self::GitIdentityRollbackFailed {
+                message: "Git could not safely finish or restore the repository-local identity. Inspect the repository configuration before trying again.",
+            },
         }
     }
 }

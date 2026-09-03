@@ -10,8 +10,11 @@ use crate::{
         repositories::{
             RegisteredRepository, RepositoriesService, RepositoryRegistration, RepositoryState,
         },
+        repository_assignment::{RepositoryAssignmentService, RepositoryProfilePreview},
     },
 };
+
+use super::profiles::ProfilesState;
 
 pub(crate) struct RepositoriesState {
     service: Arc<Mutex<RepositoriesService>>,
@@ -89,6 +92,105 @@ pub(crate) async fn refresh_repository(
 }
 
 #[tauri::command]
+pub(crate) async fn assign_repository_profile(
+    state: tauri::State<'_, RepositoriesState>,
+    profiles_state: tauri::State<'_, ProfilesState>,
+    id: String,
+    profile_id: String,
+) -> Result<RegisteredRepository, AppError> {
+    let repositories = state.service();
+    let profiles = profiles_state.service();
+    tauri::async_runtime::spawn_blocking(move || {
+        let profiles = profiles
+            .lock()
+            .map_err(|_| AppError::repository_assignment_failed())?;
+        let repositories = repositories
+            .lock()
+            .map_err(|_| AppError::repository_assignment_failed())?;
+        let registration =
+            RepositoryAssignmentService::new(&repositories, &profiles, SystemProcessRunner)
+                .assign(&id, &profile_id)
+                .map_err(AppError::from)?;
+        Ok(inspect_registration(registration))
+    })
+    .await
+    .map_err(|_| AppError::repository_assignment_failed())?
+}
+
+#[tauri::command]
+pub(crate) async fn remove_repository_profile(
+    state: tauri::State<'_, RepositoriesState>,
+    profiles_state: tauri::State<'_, ProfilesState>,
+    id: String,
+) -> Result<RegisteredRepository, AppError> {
+    let repositories = state.service();
+    let profiles = profiles_state.service();
+    tauri::async_runtime::spawn_blocking(move || {
+        let profiles = profiles
+            .lock()
+            .map_err(|_| AppError::repository_assignment_failed())?;
+        let repositories = repositories
+            .lock()
+            .map_err(|_| AppError::repository_assignment_failed())?;
+        let registration =
+            RepositoryAssignmentService::new(&repositories, &profiles, SystemProcessRunner)
+                .unassign(&id)
+                .map_err(AppError::from)?;
+        Ok(inspect_registration(registration))
+    })
+    .await
+    .map_err(|_| AppError::repository_assignment_failed())?
+}
+
+#[tauri::command]
+pub(crate) async fn preview_repository_profile(
+    state: tauri::State<'_, RepositoriesState>,
+    profiles_state: tauri::State<'_, ProfilesState>,
+    id: String,
+) -> Result<RepositoryProfilePreview, AppError> {
+    let repositories = state.service();
+    let profiles = profiles_state.service();
+    tauri::async_runtime::spawn_blocking(move || {
+        let profiles = profiles
+            .lock()
+            .map_err(|_| AppError::repository_assignment_failed())?;
+        let repositories = repositories
+            .lock()
+            .map_err(|_| AppError::repository_assignment_failed())?;
+        RepositoryAssignmentService::new(&repositories, &profiles, SystemProcessRunner)
+            .preview(&id)
+            .map_err(AppError::from)
+    })
+    .await
+    .map_err(|_| AppError::repository_assignment_failed())?
+}
+
+#[tauri::command]
+pub(crate) async fn apply_repository_profile(
+    state: tauri::State<'_, RepositoriesState>,
+    profiles_state: tauri::State<'_, ProfilesState>,
+    id: String,
+) -> Result<RegisteredRepository, AppError> {
+    let repositories = state.service();
+    let profiles = profiles_state.service();
+    tauri::async_runtime::spawn_blocking(move || {
+        let profiles = profiles
+            .lock()
+            .map_err(|_| AppError::repository_assignment_failed())?;
+        let repositories = repositories
+            .lock()
+            .map_err(|_| AppError::repository_assignment_failed())?;
+        let result =
+            RepositoryAssignmentService::new(&repositories, &profiles, SystemProcessRunner)
+                .apply(&id)
+                .map_err(AppError::from)?;
+        Ok(available_repository(result.registration, result.inspection))
+    })
+    .await
+    .map_err(|_| AppError::repository_assignment_failed())?
+}
+
+#[tauri::command]
 pub(crate) async fn remove_repository(
     state: tauri::State<'_, RepositoriesState>,
     id: String,
@@ -148,6 +250,7 @@ fn available_repository(
         id: registration.id,
         path: registration.path,
         added_at: registration.added_at,
+        profile_id: registration.profile_id,
         state: RepositoryState::Available,
         inspection: Some(inspection),
         message: None,
@@ -183,6 +286,7 @@ fn unavailable_repository(
         id: registration.id,
         path: registration.path,
         added_at: registration.added_at,
+        profile_id: registration.profile_id,
         state,
         inspection: None,
         message: Some(message.to_owned()),

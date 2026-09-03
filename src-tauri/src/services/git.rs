@@ -74,6 +74,15 @@ pub(crate) enum GitInspectionError {
     MalformedOutput,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GitIdentityApplyError {
+    Inspection(GitInspectionError),
+    InvalidIdentity,
+    WriteFailed,
+    VerificationFailed,
+    RollbackFailed,
+}
+
 pub(crate) struct GitService<R> {
     runner: R,
 }
@@ -125,6 +134,148 @@ impl<R: ProcessRunner> GitService<R> {
             path: root_text,
             remotes,
             identity: GitIdentity { name, email },
+        })
+    }
+
+    pub(crate) fn apply_local_identity(
+        &self,
+        repository_path: &str,
+        name: &str,
+        email: &str,
+    ) -> Result<RepositoryInspection, GitIdentityApplyError> {
+        validate_identity_value(name)?;
+        validate_identity_value(email)?;
+
+        let current = self
+            .inspect(repository_path)
+            .map_err(GitIdentityApplyError::Inspection)?;
+        let root = current.path.as_str();
+        let previous_name = self
+            .local_values(root, "user.name")
+            .map_err(GitIdentityApplyError::Inspection)?;
+        let previous_email = self
+            .local_values(root, "user.email")
+            .map_err(GitIdentityApplyError::Inspection)?;
+
+        if self.write_local_value(root, "user.name", name).is_err()
+            || self.write_local_value(root, "user.email", email).is_err()
+        {
+            return Err(self.rollback_error(root, &previous_name, &previous_email, false));
+        }
+
+        let verified = self.inspect(root).ok().filter(|inspection| {
+            config_matches_local(&inspection.identity.name, name)
+                && config_matches_local(&inspection.identity.email, email)
+                && self.local_values(root, "user.name").ok() == Some(vec![name.to_owned()])
+                && self.local_values(root, "user.email").ok() == Some(vec![email.to_owned()])
+        });
+
+        match verified {
+            Some(inspection) => Ok(inspection),
+            None => Err(self.rollback_error(root, &previous_name, &previous_email, true)),
+        }
+    }
+
+    fn rollback_error(
+        &self,
+        root: &str,
+        previous_name: &[String],
+        previous_email: &[String],
+        verification_failed: bool,
+    ) -> GitIdentityApplyError {
+        let name_restored = self.restore_local_values(root, "user.name", previous_name);
+        let email_restored = self.restore_local_values(root, "user.email", previous_email);
+        if name_restored && email_restored {
+            if verification_failed {
+                GitIdentityApplyError::VerificationFailed
+            } else {
+                GitIdentityApplyError::WriteFailed
+            }
+        } else {
+            GitIdentityApplyError::RollbackFailed
+        }
+    }
+
+    fn local_values(&self, root: &str, key: &str) -> Result<Vec<String>, GitInspectionError> {
+        let output = self.run_git(&[
+            "-C",
+            root,
+            "config",
+            "--local",
+            "--no-includes",
+            "--null",
+            "--get-all",
+            key,
+        ])?;
+        if !output.success {
+            if matches!(output.exit_code, Some(1 | 5)) && output.stdout.is_empty() {
+                return Ok(Vec::new());
+            }
+            return Err(GitInspectionError::CommandFailed);
+        }
+        Ok(null_fields(&output.stdout)
+            .into_iter()
+            .map(str::to_owned)
+            .collect())
+    }
+
+    fn write_local_value(
+        &self,
+        root: &str,
+        key: &str,
+        value: &str,
+    ) -> Result<(), GitInspectionError> {
+        let output = self.run_git(&[
+            "-C",
+            root,
+            "config",
+            "--local",
+            "--no-includes",
+            "--replace-all",
+            key,
+            value,
+        ])?;
+        if output.success {
+            Ok(())
+        } else {
+            Err(GitInspectionError::CommandFailed)
+        }
+    }
+
+    fn restore_local_values(&self, root: &str, key: &str, values: &[String]) -> bool {
+        let unset = self.run_git(&[
+            "-C",
+            root,
+            "config",
+            "--local",
+            "--no-includes",
+            "--unset-all",
+            key,
+        ]);
+        if !matches!(
+            unset,
+            Ok(ProcessOutput { success: true, .. })
+                | Ok(ProcessOutput {
+                    success: false,
+                    exit_code: Some(1 | 5),
+                    ..
+                })
+        ) {
+            return false;
+        }
+
+        values.iter().all(|value| {
+            self.run_git(&[
+                "-C",
+                root,
+                "config",
+                "--local",
+                "--no-includes",
+                "--add",
+                key,
+                value,
+            ])
+            .is_ok_and(|output| output.success)
         })
     }
 
@@ -202,6 +353,22 @@ impl<R: ProcessRunner> GitService<R> {
                 }
             })
     }
+}
+
+fn validate_identity_value(value: &str) -> Result<(), GitIdentityApplyError> {
+    if value.is_empty() || value.chars().count() > 254 || value.chars().any(char::is_control) {
+        Err(GitIdentityApplyError::InvalidIdentity)
+    } else {
+        Ok(())
+    }
+}
+
+fn config_matches_local(value: &GitConfigValue, expected: &str) -> bool {
+    value.value.as_deref() == Some(expected)
+        && value
+            .source
+            .as_ref()
+            .is_some_and(|source| source.scope == GitConfigScope::Local)
 }
 
 fn validate_path_input(path: &str) -> Result<(), GitInspectionError> {
@@ -753,6 +920,171 @@ mod tests {
             inspection.path,
             fs::canonicalize(&worktree).unwrap().to_string_lossy()
         );
+    }
+
+    #[test]
+    fn applies_and_verifies_only_repository_local_identity() {
+        let directory = TestDirectory::new();
+        let repository = directory.path().join("apply-repository");
+        fs::create_dir(&repository).unwrap();
+        run_git(&repository, &["init", "--quiet"]);
+        run_git(
+            &repository,
+            &["config", "--local", "core.testSetting", "preserved"],
+        );
+        let global = directory.path().join("apply-global.gitconfig");
+        fs::write(
+            &global,
+            "[user]\n\tname = Global Octo\n\temail = global@example.com\n",
+        )
+        .unwrap();
+        let global_before = fs::read(&global).unwrap();
+        let runner = IsolatedGitRunner {
+            home: directory.path().to_owned(),
+            global_config: global.clone(),
+        };
+
+        let inspection = GitService::new(&runner)
+            .apply_local_identity(
+                &repository.to_string_lossy(),
+                "Work Octo",
+                "work@example.com",
+            )
+            .unwrap();
+
+        assert!(config_matches_local(&inspection.identity.name, "Work Octo"));
+        assert!(config_matches_local(
+            &inspection.identity.email,
+            "work@example.com"
+        ));
+        assert_eq!(fs::read(global).unwrap(), global_before);
+        let preserved = std::process::Command::new("git")
+            .args([
+                "-C",
+                repository.to_str().unwrap(),
+                "config",
+                "--local",
+                "--get",
+                "core.testSetting",
+            ])
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .output()
+            .unwrap();
+        assert!(preserved.status.success());
+        assert_eq!(
+            String::from_utf8_lossy(&preserved.stdout).trim(),
+            "preserved"
+        );
+    }
+
+    struct CommandOverrideGitRunner {
+        inner: IsolatedGitRunner,
+    }
+
+    impl ProcessRunner for &CommandOverrideGitRunner {
+        fn run(&self, program: &str, args: &[&str]) -> Result<ProcessOutput, ProcessError> {
+            let output = std::process::Command::new(program)
+                .args(args)
+                .env("HOME", &self.inner.home)
+                .env("GIT_CONFIG_GLOBAL", &self.inner.global_config)
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .env("GIT_CONFIG_COUNT", "2")
+                .env("GIT_CONFIG_KEY_0", "user.name")
+                .env("GIT_CONFIG_VALUE_0", "Command Name")
+                .env("GIT_CONFIG_KEY_1", "user.email")
+                .env("GIT_CONFIG_VALUE_1", "command@example.com")
+                .output()
+                .map_err(ProcessError::from)?;
+            Ok(ProcessOutput {
+                success: output.status.success(),
+                exit_code: output.status.code(),
+                stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+            })
+        }
+
+        fn start(&self, _program: &str, _args: &[&str]) -> Result<(), ProcessError> {
+            panic!("repository identity application must not start a process")
+        }
+    }
+
+    #[test]
+    fn restores_previous_local_values_when_verification_fails() {
+        let directory = TestDirectory::new();
+        let repository = directory.path().join("rollback-repository");
+        fs::create_dir(&repository).unwrap();
+        run_git(&repository, &["init", "--quiet"]);
+        run_git(
+            &repository,
+            &["config", "--local", "user.name", "Previous Name"],
+        );
+        run_git(
+            &repository,
+            &["config", "--local", "user.email", "previous@example.com"],
+        );
+        let global = directory.path().join("rollback-global.gitconfig");
+        fs::write(&global, "").unwrap();
+        let runner = CommandOverrideGitRunner {
+            inner: IsolatedGitRunner {
+                home: directory.path().to_owned(),
+                global_config: global,
+            },
+        };
+
+        assert_eq!(
+            GitService::new(&runner).apply_local_identity(
+                &repository.to_string_lossy(),
+                "Desired Name",
+                "desired@example.com"
+            ),
+            Err(GitIdentityApplyError::VerificationFailed)
+        );
+
+        let local_name = std::process::Command::new("git")
+            .args([
+                "-C",
+                repository.to_str().unwrap(),
+                "config",
+                "--local",
+                "--get",
+                "user.name",
+            ])
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .output()
+            .unwrap();
+        let local_email = std::process::Command::new("git")
+            .args([
+                "-C",
+                repository.to_str().unwrap(),
+                "config",
+                "--local",
+                "--get",
+                "user.email",
+            ])
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .output()
+            .unwrap();
+        assert_eq!(
+            String::from_utf8_lossy(&local_name.stdout).trim(),
+            "Previous Name"
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&local_email.stdout).trim(),
+            "previous@example.com"
+        );
+    }
+
+    #[test]
+    fn rejects_identity_values_before_running_git() {
+        let runner = FakeRunner::new(Vec::new());
+        assert_eq!(
+            GitService::new(&runner).apply_local_identity(
+                "/work/project",
+                "bad\nname",
+                "ok@example.com"
+            ),
+            Err(GitIdentityApplyError::InvalidIdentity)
+        );
+        assert!(runner.calls.lock().unwrap().is_empty());
     }
 
     #[test]

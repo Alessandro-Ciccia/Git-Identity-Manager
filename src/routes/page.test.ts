@@ -22,6 +22,7 @@ const repository: RegisteredRepository = {
   id: 'dc683096-c95b-4b68-b609-b994f98b2d2c',
   path: '/work/project',
   addedAt: '2026-09-03T10:00:00Z',
+  profileId: null,
   state: 'available',
   message: null,
   inspection: {
@@ -98,6 +99,44 @@ function mockInitialState(
         return Promise.resolve(repositories);
       case 'register_repository':
         return Promise.resolve(repository);
+      case 'assign_repository_profile':
+        return Promise.resolve({
+          ...repository,
+          profileId: profile.id,
+          inspection: {
+            ...repository.inspection!,
+            identity: {
+              ...repository.inspection!.identity,
+              email: {
+                ...repository.inspection!.identity.email,
+                value: 'wrong@example.com',
+              },
+            },
+          },
+        });
+      case 'preview_repository_profile':
+        return Promise.resolve({
+          repositoryId: repository.id,
+          path: repository.path,
+          profile,
+          changes: [
+            {
+              key: 'userName',
+              current: repository.inspection!.identity.name,
+              desired: profile.gitName,
+            },
+            {
+              key: 'userEmail',
+              current: {
+                ...repository.inspection!.identity.email,
+                value: 'wrong@example.com',
+              },
+              desired: profile.gitEmail,
+            },
+          ],
+        });
+      case 'apply_repository_profile':
+        return Promise.resolve({ ...repository, profileId: profile.id });
       case 'create_profile':
         return Promise.resolve(profile);
       default:
@@ -160,6 +199,32 @@ describe('profiles page flow', () => {
       });
     });
     expect(await screen.findByRole('heading', { name: 'project' })).toBeInTheDocument();
+  });
+
+  it('assigns, previews, and applies a repository profile through narrow commands', async () => {
+    const user = userEvent.setup();
+    mockInitialState([profile]);
+    render(Page);
+
+    await user.click(screen.getByRole('button', { name: 'Repositories' }));
+    await screen.findByRole('heading', { name: 'project' });
+    await user.selectOptions(screen.getByLabelText('Expected profile for project'), profile.id);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('assign_repository_profile', {
+        id: repository.id,
+        profileId: profile.id,
+      });
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Fix Git identity' }));
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(invokeMock).toHaveBeenCalledWith('preview_repository_profile', { id: repository.id });
+    await user.click(screen.getByRole('button', { name: 'Apply local identity' }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('apply_repository_profile', { id: repository.id });
+    });
+    expect(await screen.findByRole('status')).toHaveTextContent('Verified Personal');
   });
 
   it('creates a profile through the typed command and updates the visible collection', async () => {

@@ -14,7 +14,7 @@
   } from '$lib/domain/github';
   import { navigationItems, type NavigationSection } from '$lib/domain/navigation';
   import type { GitProfile, ProfileInput } from '$lib/domain/profiles';
-  import type { RegisteredRepository } from '$lib/domain/repositories';
+  import type { RegisteredRepository, RepositoryProfilePreview } from '$lib/domain/repositories';
   import { environmentErrorMessage, getEnvironmentStatus } from '$lib/ipc/environment';
   import {
     githubCliUpdateRecommended,
@@ -34,10 +34,14 @@
     updateProfile,
   } from '$lib/ipc/profiles';
   import {
+    applyRepositoryProfile,
+    assignRepositoryProfile,
     listRepositories,
+    previewRepositoryProfile,
     refreshRepository,
     registerRepository,
     removeRepository,
+    removeRepositoryProfile,
     repositoryErrorMessage,
     revealRepository,
   } from '$lib/ipc/repositories';
@@ -68,10 +72,15 @@
   let repositories = $state<RegisteredRepository[]>([]);
   let repositoriesLoading = $state(true);
   let repositoriesError = $state<string | null>(null);
+  let repositoriesSuccess = $state<string | null>(null);
   let addingRepository = $state(false);
   let refreshingRepositoryId = $state<string | null>(null);
   let removingRepositoryId = $state<string | null>(null);
   let revealingRepositoryId = $state<string | null>(null);
+  let assigningRepositoryId = $state<string | null>(null);
+  let previewingRepositoryId = $state<string | null>(null);
+  let applyingRepositoryId = $state<string | null>(null);
+  let repositoryProfilePreview = $state<RepositoryProfilePreview | null>(null);
 
   const LOGIN_POLL_INTERVAL_MS = 3_000;
   const LOGIN_POLL_ATTEMPTS = 40;
@@ -188,6 +197,81 @@
       repositoriesError = repositoryErrorMessage(error);
     } finally {
       refreshingRepositoryId = null;
+    }
+  }
+
+  async function assignRegisteredRepositoryProfile(
+    id: string,
+    profileId: string | null,
+  ): Promise<void> {
+    assigningRepositoryId = id;
+    repositoriesError = null;
+    repositoriesSuccess = null;
+
+    try {
+      const updated = profileId
+        ? await assignRepositoryProfile(id, profileId)
+        : await removeRepositoryProfile(id);
+      repositories = repositories.map((repository) =>
+        repository.id === id ? updated : repository,
+      );
+    } catch (error) {
+      repositoriesError = repositoryErrorMessage(error);
+    } finally {
+      assigningRepositoryId = null;
+    }
+  }
+
+  async function previewRegisteredRepositoryProfile(id: string): Promise<void> {
+    previewingRepositoryId = id;
+    repositoriesError = null;
+    repositoriesSuccess = null;
+
+    try {
+      repositoryProfilePreview = await previewRepositoryProfile(id);
+    } catch (error) {
+      repositoriesError = repositoryErrorMessage(error);
+    } finally {
+      previewingRepositoryId = null;
+    }
+  }
+
+  function cancelRepositoryProfilePreview(): void {
+    if (!applyingRepositoryId) {
+      repositoryProfilePreview = null;
+    }
+  }
+
+  async function applyRegisteredRepositoryProfile(): Promise<void> {
+    const preview = repositoryProfilePreview;
+    if (!preview) {
+      return;
+    }
+
+    const id = preview.repositoryId;
+    applyingRepositoryId = id;
+    repositoriesError = null;
+    repositoriesSuccess = null;
+
+    try {
+      const updated = await applyRepositoryProfile(id);
+      repositories = repositories.map((repository) =>
+        repository.id === id ? updated : repository,
+      );
+      repositoriesSuccess = `Verified ${preview.profile.label} in this repository’s local Git configuration.`;
+      repositoryProfilePreview = null;
+    } catch (error) {
+      repositoriesError = repositoryErrorMessage(error);
+      try {
+        const refreshed = await refreshRepository(id);
+        repositories = repositories.map((repository) =>
+          repository.id === id ? refreshed : repository,
+        );
+      } catch {
+        // Preserve the authoritative apply error if follow-up inspection also fails.
+      }
+    } finally {
+      applyingRepositoryId = null;
     }
   }
 
@@ -490,17 +574,28 @@
           <div class="mt-10">
             <RepositoriesPanel
               {repositories}
+              {profiles}
+              {githubStatus}
               loading={repositoriesLoading}
               error={repositoriesError}
+              success={repositoriesSuccess}
               adding={addingRepository}
               refreshingId={refreshingRepositoryId}
               removingId={removingRepositoryId}
               revealingId={revealingRepositoryId}
+              assigningId={assigningRepositoryId}
+              previewingId={previewingRepositoryId}
+              applyingId={applyingRepositoryId}
+              preview={repositoryProfilePreview}
               onAdd={addRepository}
               onRefreshAll={refreshRepositories}
               onRefresh={refreshRegisteredRepository}
               onRemove={removeRegisteredRepository}
               onReveal={revealRegisteredRepository}
+              onAssignProfile={assignRegisteredRepositoryProfile}
+              onPreviewProfile={previewRegisteredRepositoryProfile}
+              onCancelPreview={cancelRepositoryProfilePreview}
+              onApplyProfile={applyRegisteredRepositoryProfile}
             />
           </div>
         {/if}

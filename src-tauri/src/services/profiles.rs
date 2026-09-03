@@ -72,6 +72,15 @@ impl ProfilesService {
         Ok(self.load()?.profiles)
     }
 
+    pub(crate) fn find(&self, id: &str) -> Result<GitProfile, ProfileError> {
+        validate_id(id)?;
+        self.load()?
+            .profiles
+            .into_iter()
+            .find(|profile| profile.id == id)
+            .ok_or(ProfileError::NotFound)
+    }
+
     pub(crate) fn create(&self, input: ProfileInput) -> Result<GitProfile, ProfileError> {
         let input = normalize_and_validate_input(input)?;
         let mut store = self.load()?;
@@ -473,6 +482,7 @@ mod tests {
         let directory = TestDirectory::new();
         let service = service_in(directory.path());
 
+        assert_eq!(service.find("not-an-id"), Err(ProfileError::InvalidId));
         assert_eq!(
             service.update("not-an-id", input("Work")),
             Err(ProfileError::InvalidId)

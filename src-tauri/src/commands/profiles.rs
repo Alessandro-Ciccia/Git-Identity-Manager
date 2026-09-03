@@ -1,4 +1,7 @@
-use std::{path::PathBuf, sync::Mutex};
+use std::{
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
 use crate::{
     error::AppError,
@@ -6,14 +9,18 @@ use crate::{
 };
 
 pub(crate) struct ProfilesState {
-    service: Mutex<ProfilesService>,
+    service: Arc<Mutex<ProfilesService>>,
 }
 
 impl ProfilesState {
     pub(crate) fn new(store_path: Option<PathBuf>) -> Self {
         Self {
-            service: Mutex::new(ProfilesService::new(store_path)),
+            service: Arc::new(Mutex::new(ProfilesService::new(store_path))),
         }
+    }
+
+    pub(crate) fn service(&self) -> Arc<Mutex<ProfilesService>> {
+        Arc::clone(&self.service)
     }
 
     fn with_service<T>(
